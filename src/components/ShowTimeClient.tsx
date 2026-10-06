@@ -24,8 +24,6 @@ import {
   FileAudio,
   FastForward,
   Rewind,
-  Wand2,
-  FileText,
   Clock,
   Loader2,
 } from "lucide-react";
@@ -64,6 +62,47 @@ function getSupportedMimeType(): string | undefined {
     }
   }
   return undefined;
+}
+
+// Accurately decode audio duration for all formats (especially MediaRecorder .webm)
+async function getAudioDuration(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    try {
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) {
+        resolve(0);
+        return;
+      }
+      const audioCtx = new AudioContextClass();
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          if (!arrayBuffer) {
+            audioCtx.close().catch(() => {});
+            resolve(0);
+            return;
+          }
+          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+          const duration = audioBuffer.duration;
+          audioCtx.close().catch(() => {});
+          resolve(duration && isFinite(duration) ? duration : 0);
+        } catch {
+          audioCtx.close().catch(() => {});
+          resolve(0);
+        }
+      };
+      reader.onerror = () => {
+        audioCtx.close().catch(() => {});
+        resolve(0);
+      };
+      reader.readAsArrayBuffer(file);
+    } catch {
+      resolve(0);
+    }
+  });
 }
 
 // ── Speaker Circular SVG Timer (Counts down 120s) ───────────────────────────
@@ -344,12 +383,12 @@ function ListenerCollocationHUD({
   topic,
   heardSet,
   toggleItem,
-  transcript,
+  resetHeard,
 }: {
   topic: Topic;
   heardSet: Set<string>;
   toggleItem: (item: string) => void;
-  transcript?: string;
+  resetHeard?: () => void;
 }) {
   const allItems = useMemo(
     () => (topic.collocations || []).flatMap((c) => c.items || []),
@@ -370,12 +409,24 @@ function ListenerCollocationHUD({
               Collocation Spotter (Bắt Cụm Từ Bài Nói)
             </div>
             <p className="text-sm text-slate-600">
-              Cụm từ được AI nhận diện tự động hoặc bạn có thể tự bấm chọn khi bạn mình nói đúng
+              Vừa nghe bản ghi âm vừa bấm chọn các cụm từ (Collocations) mà bạn mình đã phát âm chính xác
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
+          {resetHeard && heardSet.size > 0 && (
+            <button
+              type="button"
+              onClick={resetHeard}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-full px-3 py-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
+              title="Đặt lại toàn bộ từ đã chọn"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Đặt lại</span>
+            </button>
+          )}
+
           <span className="inline-flex items-center gap-2 text-sm font-bold bg-purple-50 text-purple-800 border border-purple-200 rounded-full px-4 py-1.5 shadow-2xs">
             <Award className="w-4 h-4 text-purple-600" />
             <span>Đã bắt được: {count} / {total} từ</span>
@@ -425,18 +476,6 @@ function ListenerCollocationHUD({
           </div>
         ))}
       </div>
-
-      {/* Optional AI Transcript preview if generated */}
-      {transcript && (
-        <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 space-y-2">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600">
-            <FileText className="w-4 h-4 text-purple-600" /> Bản dịch âm thanh (AI Transcript)
-          </div>
-          <p className="text-sm text-slate-800 font-normal leading-relaxed italic m-0">
-            &ldquo;{transcript}&rdquo;
-          </p>
-        </div>
-      )}
     </div>
   );
 }
@@ -450,9 +489,6 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
 
   const {
     heardSet,
-    isListening,
-    start: startSR,
-    stop: stopSR,
     toggle: toggleItem,
     reset: resetHeard,
   } = useSpeechRecognition(allItems);
@@ -502,8 +538,6 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
   const [audioCurrentTime, setAudioCurrentTime] = useState<number>(0);
   const [audioPlaying, setAudioPlaying] = useState<boolean>(false);
   const [audioPlaybackRate, setAudioPlaybackRate] = useState<number>(1.0);
-  const [aiAnalyzing, setAiAnalyzing] = useState<boolean>(false);
-  const [aiTranscript, setAiTranscript] = useState<string>("");
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -795,8 +829,8 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
     confettiFiredRef.current = false;
   }, [stopSpeakerRecording]);
 
-  // ── Listener Mode Logic (Uploaded Audio Player & AI Spotter) ──────────────
-  const handleFileUpload = (file: File) => {
+  // ── Listener Mode Logic (Uploaded Audio Player) ─────────────────────────
+  const handleFileUpload = async (file: File) => {
     if (uploadedAudioUrl) {
       URL.revokeObjectURL(uploadedAudioUrl);
     }
@@ -805,9 +839,14 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
     setUploadedAudioUrl(url);
     setAudioCurrentTime(0);
     setAudioPlaying(false);
-    setAiTranscript("");
     resetHeard();
     confettiFiredRef.current = false;
+
+    // Decode exact audio duration immediately for webm / mp3 / wav / m4a / ogg
+    const exactDuration = await getAudioDuration(file);
+    if (exactDuration > 0) {
+      setAudioDuration(exactDuration);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -829,7 +868,6 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
     setAudioDuration(0);
     setAudioCurrentTime(0);
     setAudioPlaying(false);
-    setAiTranscript("");
     resetHeard();
   };
 
@@ -838,64 +876,32 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
     if (audioPlaying) {
       audioPlayerRef.current.pause();
     } else {
-      audioPlayerRef.current.play();
+      audioPlayerRef.current.playbackRate = audioPlaybackRate;
+      audioPlayerRef.current.play().catch(() => {});
     }
   };
 
   const seekAudio = (secs: number) => {
     if (!audioPlayerRef.current) return;
-    audioPlayerRef.current.currentTime = Math.max(0, Math.min(audioDuration, secs));
+    const maxDur = audioDuration > 0 ? audioDuration : 120;
+    const target = Math.max(0, Math.min(maxDur, secs));
+    audioPlayerRef.current.currentTime = target;
+    setAudioCurrentTime(target);
   };
 
   const skipAudio = (delta: number) => {
     if (!audioPlayerRef.current) return;
-    seekAudio(audioPlayerRef.current.currentTime + delta);
+    const current = audioPlayerRef.current.currentTime ?? audioCurrentTime;
+    const maxDur = audioDuration > 0 ? audioDuration : 120;
+    const target = Math.max(0, Math.min(maxDur, current + delta));
+    audioPlayerRef.current.currentTime = target;
+    setAudioCurrentTime(target);
   };
 
   const changePlaybackRate = (rate: number) => {
     setAudioPlaybackRate(rate);
     if (audioPlayerRef.current) {
       audioPlayerRef.current.playbackRate = rate;
-    }
-  };
-
-  // AI Audio Analysis / Spotting
-  const analyzeAudioWithAI = async () => {
-    if (!uploadedFile) {
-      alert("Vui lòng tải file ghi âm lên trước khi phân tích.");
-      return;
-    }
-
-    setAiAnalyzing(true);
-    try {
-      const formData = new FormData();
-      formData.append("audio", uploadedFile);
-      formData.append("collocations", JSON.stringify(allItems));
-
-      const res = await fetch("/api/transcribe", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Không thể phân tích file");
-      }
-
-      if (data.transcript) {
-        setAiTranscript(data.transcript);
-      }
-
-      if (data.detectedCollocations && data.detectedCollocations.length > 0) {
-        data.detectedCollocations.forEach((col: string) => {
-          toggleItem(col);
-        });
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Phân tích thất bại";
-      alert(`Không thể quét AI: ${msg}. Bạn vẫn có thể vừa nghe vừa bấm chọn thủ công các cụm từ.`);
-    } finally {
-      setAiAnalyzing(false);
     }
   };
 
@@ -923,7 +929,6 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
       audioPlayerRef.current.pause();
     }
     setAudioPlaying(false);
-    stopSR();
     setRole(newRole);
   };
 
@@ -1190,14 +1195,22 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                 src={uploadedAudioUrl}
                 onLoadedMetadata={(e) => {
                   const d = e.currentTarget.duration;
-                  if (!isNaN(d) && isFinite(d)) {
+                  if (!isNaN(d) && isFinite(d) && d > 0) {
                     setAudioDuration(d);
+                  }
+                  if (audioPlayerRef.current) {
+                    audioPlayerRef.current.playbackRate = audioPlaybackRate;
                   }
                 }}
                 onTimeUpdate={(e) => {
                   setAudioCurrentTime(e.currentTarget.currentTime);
                 }}
-                onPlay={() => setAudioPlaying(true)}
+                onPlay={() => {
+                  setAudioPlaying(true);
+                  if (audioPlayerRef.current) {
+                    audioPlayerRef.current.playbackRate = audioPlaybackRate;
+                  }
+                }}
                 onPause={() => setAudioPlaying(false)}
                 onEnded={() => {
                   setAudioPlaying(false);
@@ -1362,50 +1375,6 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                       ))}
                     </div>
                   </div>
-
-                  {/* AI Scan and Live Recognition Controls */}
-                  <div className="flex items-center gap-3 flex-wrap justify-center pt-2">
-                    <button
-                      type="button"
-                      disabled={aiAnalyzing}
-                      onClick={analyzeAudioWithAI}
-                      className="h-11 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-                    >
-                      {aiAnalyzing ? (
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <Wand2 className="w-4 h-4 text-amber-300" />
-                      )}
-                      <span>
-                        {aiAnalyzing ? "Đang quét âm thanh AI..." : "🤖 AI Quét & Nhận Diện Từ Vựng"}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={isListening ? stopSR : startSR}
-                      className={`h-11 px-5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 border transition-all cursor-pointer active:scale-95 ${
-                        isListening
-                          ? "bg-purple-50 text-purple-800 border-purple-300 shadow-xs animate-pulse"
-                          : "bg-white text-slate-800 border-slate-200 hover:bg-slate-50"
-                      }`}
-                    >
-                      {isListening ? (
-                        <MicOff className="w-4 h-4 text-purple-700" />
-                      ) : (
-                        <Radio className="w-4 h-4 text-purple-700" />
-                      )}
-                      <span>{isListening ? "Đang nghe mic..." : "Bật Mic Nghe Trực Tiếp"}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={resetHeard}
-                      className="h-11 px-4 rounded-xl bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" /> Xóa điểm
-                    </button>
-                  </div>
                 </div>
               </div>
             )}
@@ -1415,7 +1384,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
               topic={topic}
               heardSet={heardSet}
               toggleItem={toggleItem}
-              transcript={aiTranscript}
+              resetHeard={resetHeard}
             />
           </>
         )}
