@@ -70,7 +70,7 @@ export function useSpeechRecognition(collocations: string[]) {
       if (matched.length > 0) {
         setHeardSet((prev) => {
           const next = new Set(prev);
-          matched.forEach((m) => next.add(m));
+          matched.forEach((m) => next.add(m.toLowerCase().trim()));
           return next;
         });
       }
@@ -100,10 +100,11 @@ export function useSpeechRecognition(collocations: string[]) {
   }, []);
 
   const toggle = useCallback((colItem: string) => {
+    const key = colItem.toLowerCase().trim();
     setHeardSet((prev) => {
       const next = new Set(prev);
-      if (next.has(colItem)) next.delete(colItem);
-      else next.add(colItem);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }, []);

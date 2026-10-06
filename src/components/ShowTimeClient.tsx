@@ -444,30 +444,32 @@ function ListenerCollocationHUD({
             <div className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center justify-between border-b border-slate-200/80 pb-2">
               <span>{cat.category}</span>
               <span className="text-xs text-slate-500 font-semibold font-mono">
-                {(cat.items || []).filter((i) => heardSet.has(i.toLowerCase())).length} /{" "}
+                {(cat.items || []).filter((i) => heardSet.has(i.toLowerCase().trim())).length} /{" "}
                 {(cat.items || []).length}
               </span>
             </div>
 
             <div className="flex flex-wrap gap-2 pt-1">
               {(cat.items || []).map((item) => {
-                const active = heardSet.has(item.toLowerCase());
+                const active = heardSet.has(item.toLowerCase().trim());
                 return (
                   <button
                     key={item}
                     type="button"
                     onClick={() => toggleItem(item)}
-                    className={`text-xs sm:text-sm font-bold px-3.5 py-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`text-xs sm:text-sm font-bold px-3 py-2 rounded-xl border transition-colors duration-150 cursor-pointer flex items-center gap-1.5 select-none ${
                       active
-                        ? "bg-purple-700 text-white border-purple-700 shadow-xs scale-[1.02]"
+                        ? "bg-purple-700 text-white border-purple-700 shadow-2xs"
                         : "bg-white text-slate-800 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
                     }`}
                   >
-                    {active ? (
-                      <Check className="w-4 h-4 stroke-[3]" />
-                    ) : (
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                    )}
+                    <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                      {active ? (
+                        <Check className="w-4 h-4 stroke-[2.5]" />
+                      ) : (
+                        <span className="w-2 h-2 rounded-full bg-slate-400" />
+                      )}
+                    </span>
                     <span>{item}</span>
                   </button>
                 );
