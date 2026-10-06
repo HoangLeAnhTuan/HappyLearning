@@ -55,6 +55,7 @@ export interface PracticeSession {
   duration_seconds: number;
   collocations_heard_count: number;
   audio_url?: string | null;
+  storage_path?: string | null;
   created_at: string;
   topics?: {
     title: string;

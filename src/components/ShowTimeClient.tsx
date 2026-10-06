@@ -592,6 +592,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             topic_id: topic.id,
+            slug: topic.slug,
             student_id: studentInfo?.id || null,
             student_nickname: nickname || "Student",
             class_name: studentInfo?.class_name || null,
@@ -608,6 +609,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
     [
       sessionLogged,
       topic.id,
+      topic.slug,
       nickname,
       role,
       speakerTimeLeft,
@@ -740,6 +742,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
       setSpeakerRecordState("recording");
       setSpeakerRecordedSeconds(0);
       setSpeakerUploadStatus("idle");
+      setSessionLogged(false);
 
       speakerRecIntervalRef.current = setInterval(() => {
         setSpeakerRecordedSeconds((s) => s + 1);
@@ -766,6 +769,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
             speakerTimerIntervalRef.current = null;
           }
           setSpeakerRunning(false);
+          const wasRecording = speakerRecordState === "recording";
           stopSpeakerRecording();
           beep(1046, 0.4);
 
@@ -774,7 +778,9 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
             confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 } });
           });
 
-          logSession(SPEAKER_DURATION);
+          if (!wasRecording) {
+            logSession(SPEAKER_DURATION);
+          }
           return 0;
         }
         const next = prev - 1;
@@ -784,7 +790,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
         return next;
       });
     }, 1000);
-  }, [speakerRunning, beep, logSession, stopSpeakerRecording]);
+  }, [speakerRunning, speakerRecordState, beep, logSession, stopSpeakerRecording]);
 
   const pauseSpeakerTimer = useCallback(() => {
     if (speakerTimerIntervalRef.current) {

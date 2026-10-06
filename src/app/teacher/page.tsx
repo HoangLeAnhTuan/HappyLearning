@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Topic, Student, PracticeSession } from "@/lib/types";
 import seedData from "@/lib/seed-data.json";
 import { TeacherDashboard } from "@/components/TeacherDashboard";
+import { fetchCombinedPracticeLogs } from "@/lib/practice-service";
 import Link from "next/link";
 import { ShieldCheck, ArrowLeft } from "lucide-react";
 
@@ -60,30 +61,8 @@ async function getInitialData(): Promise<{
       students = studentsData as Student[];
     }
 
-    // 3. Fetch Practice Logs
-    const { data: logsData } = await supabase
-      .from("practice_sessions")
-      .select(`
-        id,
-        topic_id,
-        student_id,
-        student_nickname,
-        class_name,
-        role,
-        duration_seconds,
-        collocations_heard_count,
-        created_at,
-        topics (
-          title,
-          slug
-        )
-      `)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (logsData) {
-      logs = logsData as unknown as PracticeSession[];
-    }
+    // 3. Fetch Combined Practice Logs (DB + Supabase Storage Recordings)
+    logs = await fetchCombinedPracticeLogs();
   } catch {
     // Database or SSR init fallback
   }

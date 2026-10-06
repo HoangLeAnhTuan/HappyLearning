@@ -27,6 +27,8 @@ import {
   FileAudio,
   Volume2,
   Download,
+  RefreshCw,
+  Loader2,
 } from "lucide-react";
 
 function generateCopySlug(slug: string) {
@@ -70,6 +72,10 @@ export function TeacherDashboard({
   const [selectedClassFilter, setSelectedClassFilter] = useState("all");
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
+  // Practice Logs State
+  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
+  const [isRefreshingLogs, setIsRefreshingLogs] = useState(false);
+
   // Fetch functions
   const fetchTopics = async () => {
     try {
@@ -92,12 +98,47 @@ export function TeacherDashboard({
   };
 
   const fetchLogs = async () => {
+    setIsRefreshingLogs(true);
     try {
       const res = await fetch("/api/practice");
       const data = await res.json();
       if (data.sessions) setPracticeLogs(data.sessions);
     } catch {
       // ignore
+    } finally {
+      setIsRefreshingLogs(false);
+    }
+  };
+
+  const handleDeleteLog = async (log: PracticeSession) => {
+    const studentLabel = log.student_nickname || "học viên";
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn xóa bản ghi âm / lượt luyện tập của "${studentLabel}" không?\n(Hành động này sẽ xóa vĩnh viễn cả file âm thanh trên Supabase Storage)`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingLogId(log.id);
+    try {
+      const params = new URLSearchParams();
+      if (log.id) params.set("id", log.id);
+      if (log.storage_path) params.set("storage_path", log.storage_path);
+      if (log.audio_url) params.set("audio_url", log.audio_url);
+
+      const res = await fetch(`/api/practice?${params.toString()}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Không thể xóa lượt luyện tập");
+      }
+      setPracticeLogs((prev) => prev.filter((l) => l.id !== log.id));
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Xóa thất bại");
+    } finally {
+      setDeletingLogId(null);
     }
   };
 
@@ -734,6 +775,32 @@ export function TeacherDashboard({
       {/* ── TAB 3: Practice Activity Logs ──────────────────────────────────── */}
       {activeTab === "logs" && (
         <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
+            <div>
+              <h2 className="font-bold text-base sm:text-lg text-slate-900 flex items-center gap-2">
+                <FileAudio className="w-5 h-5 text-indigo-600" /> Nhật Ký &amp; Bản Ghi Âm Luyện Nói
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                Nghe lại bài nói, tải file 96kbps về máy và quản lý các bài luyện tập đã lưu trên Supabase Storage.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={fetchLogs}
+                disabled={isRefreshingLogs}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all cursor-pointer active:scale-95 disabled:opacity-60"
+                title="Làm mới danh sách"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingLogs ? "animate-spin text-indigo-600" : ""}`} />
+                <span>Làm mới</span>
+              </button>
+              <span className="text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-xl">
+                Tổng cộng: {practiceLogs.length} bài
+              </span>
+            </div>
+          </div>
+
           <div className="bg-white rounded-2xl border border-slate-200 overflow-x-auto shadow-xs">
             <table className="w-full text-left border-collapse text-xs sm:text-sm font-sans">
               <thead>
@@ -745,66 +812,89 @@ export function TeacherDashboard({
                   <th className="p-3.5">Collocations Đã Nói</th>
                   <th className="p-3.5">Bản Ghi Âm (96kbps)</th>
                   <th className="p-3.5">Thời Gian</th>
+                  <th className="p-3.5 text-right">Thao Tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {practiceLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-3.5 font-bold text-slate-800">
-                      {log.student_nickname || "Khách (Anonymous)"}
-                    </td>
-                    <td className="p-3.5">
-                      {log.class_name ? (
-                        <span className="px-2 py-0.5 rounded bg-slate-100 font-semibold text-xs text-slate-700">
-                          {log.class_name}
+                {practiceLogs.map((log) => {
+                  const isDeleting = deletingLogId === log.id;
+                  return (
+                    <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3.5 font-bold text-slate-800">
+                        {log.student_nickname || "Khách (Anonymous)"}
+                      </td>
+                      <td className="p-3.5">
+                        {log.class_name ? (
+                          <span className="px-2 py-0.5 rounded bg-slate-100 font-semibold text-xs text-slate-700">
+                            {log.class_name}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">-</span>
+                        )}
+                      </td>
+                      <td className="p-3.5 text-slate-700 font-medium">
+                        {log.topics?.title || "Speaking Practice"}
+                      </td>
+                      <td className="p-3.5">
+                        <span className="capitalize px-2.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-medium text-xs text-slate-700">
+                          {log.role === "pair"
+                            ? "Theo cặp"
+                            : log.role === "listener"
+                            ? "Người nghe"
+                            : "Cá nhân (Speaker)"}
                         </span>
-                      ) : (
-                        <span className="text-slate-400 text-xs">-</span>
-                      )}
-                    </td>
-                    <td className="p-3.5 text-slate-700 font-medium">
-                      {log.topics?.title || "Speaking Practice"}
-                    </td>
-                    <td className="p-3.5">
-                      <span className="capitalize px-2.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-medium text-xs text-slate-700">
-                        {log.role === "pair" ? "Theo cặp" : log.role === "listener" ? "Người nghe" : "Cá nhân (Speaker)"}
-                      </span>
-                    </td>
-                    <td className="p-3.5 font-bold text-indigo-600">
-                      {log.collocations_heard_count} cụm từ
-                    </td>
-                    <td className="p-3.5">
-                      {log.audio_url ? (
-                        <div className="flex items-center gap-2">
-                          <audio
-                            src={log.audio_url}
-                            controls
-                            className="h-8 max-w-[180px] rounded-lg"
-                            preload="none"
-                          />
-                          <a
-                            href={log.audio_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            download
-                            className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-colors"
-                            title="Tải audio 96kbps"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </a>
+                      </td>
+                      <td className="p-3.5 font-bold text-indigo-600">
+                        {log.collocations_heard_count} cụm từ
+                      </td>
+                      <td className="p-3.5">
+                        {log.audio_url ? (
+                          <div className="flex items-center gap-2">
+                            <audio
+                              src={log.audio_url}
+                              controls
+                              className="h-8 max-w-[190px] rounded-lg"
+                              preload="none"
+                            />
+                            <a
+                              href={log.audio_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download
+                              className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-colors"
+                              title="Tải audio 96kbps về máy"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">Chưa có audio</span>
+                        )}
+                      </td>
+                      <td className="p-3.5 text-slate-500 text-xs whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          {new Date(log.created_at).toLocaleString()}
                         </div>
-                      ) : (
-                        <span className="text-xs text-slate-400 italic">Chưa có audio</span>
-                      )}
-                    </td>
-                    <td className="p-3.5 text-slate-500 text-xs">
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {new Date(log.created_at).toLocaleString()}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="p-3.5 text-right">
+                        <button
+                          type="button"
+                          disabled={isDeleting}
+                          onClick={() => handleDeleteLog(log)}
+                          className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all cursor-pointer inline-flex items-center gap-1 text-xs disabled:opacity-50"
+                          title="Xóa bản ghi âm và nhật ký này"
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 
