@@ -30,6 +30,118 @@ export interface UnsupportedVoiceState {
   availableProfiles: VoiceProfile[];
 }
 
+// Strictly blacklisted legacy or novelty robot voices (e.g., Apple Fred, Trinoids, Zarvox, Whisper)
+const BLACKLISTED_NOVELTY_VOICES = [
+  "fred",
+  "bad news",
+  "good news",
+  "whisper",
+  "zarvox",
+  "pipe organ",
+  "cellos",
+  "bells",
+  "trinoids",
+  "hysterical",
+  "boing",
+  "bubbles",
+  "bahh",
+  "deranged",
+  "albert",
+  "junior",
+  "organ",
+  "wobble",
+  "ralph",
+  "bruce",
+  "princess",
+  "vicki",
+  "agnes",
+  "kathy",
+];
+
+// Known Female names across Apple macOS/iOS/Safari, Microsoft Edge/Windows, Google Chrome/Android
+const KNOWN_FEMALE_KEYWORDS = [
+  "female",
+  "woman",
+  "girl",
+  "samantha",
+  "ava",
+  "allison",
+  "jenny",
+  "zira",
+  "aria",
+  "michelle",
+  "emma",
+  "sonia",
+  "libby",
+  "maisie",
+  "stephanie",
+  "serena",
+  "fiona",
+  "martha",
+  "moira",
+  "kate",
+  "hazel",
+  "susan",
+  "karen",
+  "catherine",
+  "matilda",
+  "natasha",
+  "annette",
+  "freya",
+  "joanne",
+  "elsie",
+  "tina",
+  "zoe",
+  "nicky",
+  "victoria",
+  "google us english",
+  "google uk english female",
+  "google australian english female",
+  "google australian english",
+];
+
+// Known Male names across Apple macOS/iOS/Safari, Microsoft Edge/Windows, Google Chrome/Android
+const KNOWN_MALE_KEYWORDS = [
+  "male",
+  "man",
+  "boy",
+  "daniel",
+  "guy",
+  "david",
+  "mark",
+  "alex",
+  "evan",
+  "nathan",
+  "tom",
+  "ryan",
+  "george",
+  "oliver",
+  "arthur",
+  "thomas",
+  "william",
+  "darren",
+  "lee",
+  "gordon",
+  "russell",
+  "carlyle",
+  "duncan",
+  "ken",
+  "neil",
+  "tim",
+  "peter",
+  "malcolm",
+  "christopher",
+  "eric",
+  "roger",
+  "aaron",
+  "brian",
+  "andrew",
+  "steffan",
+  "google uk english male",
+  "google australian english male",
+  "google us english male",
+];
+
 const PROFILE_DEFINITIONS: Array<{
   id: ProfileId;
   label: string;
@@ -50,14 +162,14 @@ const PROFILE_DEFINITIONS: Array<{
     sampleGreeting: "Hi there! I am your American speaking coach. Let's practice IELTS Speaking together!",
     preferredKeywords: [
       "jenny",
-      "zira",
-      "aria",
       "samantha",
+      "aria",
       "ava",
       "allison",
-      "victoria",
+      "zira",
       "michelle",
       "emma",
+      "victoria",
       "google us english",
     ],
   },
@@ -71,14 +183,15 @@ const PROFILE_DEFINITIONS: Array<{
     sampleGreeting: "Hello there! I'm your American speaking partner. Ready to speak English today?",
     preferredKeywords: [
       "guy",
-      "david",
-      "mark",
       "alex",
+      "david",
+      "evan",
+      "nathan",
+      "tom",
+      "mark",
       "christopher",
       "eric",
       "roger",
-      "tom",
-      "fred",
       "aaron",
       "brian",
       "andrew",
@@ -95,11 +208,13 @@ const PROFILE_DEFINITIONS: Array<{
     sampleGreeting: "Hello! I am your British speaking coach. Let's practice speaking IELTS together!",
     preferredKeywords: [
       "sonia",
-      "libby",
-      "maisie",
       "stephanie",
       "serena",
       "fiona",
+      "libby",
+      "maisie",
+      "martha",
+      "kate",
       "hazel",
       "susan",
       "google uk english female",
@@ -115,11 +230,13 @@ const PROFILE_DEFINITIONS: Array<{
     sampleGreeting: "Good day! I'm your British speaking partner. Let's get ready for your IELTS test.",
     preferredKeywords: [
       "ryan",
+      "daniel",
       "george",
       "oliver",
-      "daniel",
       "arthur",
       "thomas",
+      "malcolm",
+      "peter",
       "google uk english male",
     ],
   },
@@ -132,11 +249,11 @@ const PROFILE_DEFINITIONS: Array<{
     flag: "🇦🇺",
     sampleGreeting: "G'day! I am your Australian speaking coach. Let's practice IELTS speaking together!",
     preferredKeywords: [
-      "natasha",
-      "annette",
       "karen",
+      "natasha",
       "catherine",
       "matilda",
+      "annette",
       "elsie",
       "freya",
       "joanne",
@@ -154,9 +271,9 @@ const PROFILE_DEFINITIONS: Array<{
     flag: "🇦🇺",
     sampleGreeting: "G'day mate! I'm your Australian speaking partner. Ready to ace your IELTS speaking test?",
     preferredKeywords: [
+      "lee",
       "william",
       "darren",
-      "lee",
       "gordon",
       "russell",
       "carlyle",
@@ -169,12 +286,44 @@ const PROFILE_DEFINITIONS: Array<{
   },
 ];
 
+// Verify if a voice matches target gender and doesn't violate opposite gender or blacklist
+function isVoiceGenderCompatible(voiceName: string, targetGender: "female" | "male"): boolean {
+  const n = voiceName.toLowerCase();
+
+  // 1. Blacklist check
+  if (BLACKLISTED_NOVELTY_VOICES.some((bad) => n.includes(bad))) {
+    return false;
+  }
+
+  if (targetGender === "female") {
+    // Must NOT contain known male names (e.g. Daniel, David, Guy, Alex, Lee, William, Oliver, George)
+    const hasOppositeGender = KNOWN_MALE_KEYWORDS.some((kw) => n.includes(kw));
+    if (hasOppositeGender) return false;
+
+    // Matches known female keyword or contains standard female identifiers
+    const hasFemaleKeyword = KNOWN_FEMALE_KEYWORDS.some((kw) => n.includes(kw));
+    return hasFemaleKeyword;
+  }
+
+  if (targetGender === "male") {
+    // Must NOT contain known female names (e.g. Karen, Samantha, Stephanie, Serena, Fiona, Jenny, Zira)
+    const hasOppositeGender = KNOWN_FEMALE_KEYWORDS.some((kw) => n.includes(kw));
+    if (hasOppositeGender) return false;
+
+    // Matches known male keyword or contains standard male identifiers
+    const hasMaleKeyword = KNOWN_MALE_KEYWORDS.some((kw) => n.includes(kw));
+    return hasMaleKeyword;
+  }
+
+  return false;
+}
+
 // Helper to filter English voices strictly matching dialect & gender without guessing
 function resolveVoiceForProfile(
   profile: (typeof PROFILE_DEFINITIONS)[number],
   allVoices: SpeechSynthesisVoice[]
 ): { voice: SpeechSynthesisVoice | null; displayName: string; isAvailable: boolean } {
-  // 1. Strict English filter: Never ever permit Japanese, Chinese, Vietnamese etc.
+  // 1. Strict English filter: Never permit non-English voices
   const englishVoices = allVoices.filter((v) => {
     const lang = (v.lang || "").toLowerCase().replace("_", "-");
     return lang.startsWith("en");
@@ -224,56 +373,31 @@ function resolveVoiceForProfile(
     return false;
   });
 
-  // 3. Search within matching regional voices
+  // 3. Search within matching regional voices with strict gender & preference checks
   if (regionalVoices.length > 0) {
-    // 3a. Natural / Neural / Online with specific name keyword
+    // 3a. Preferred keywords matching target gender
     for (const kw of profile.preferredKeywords) {
       const found = regionalVoices.find((v) => {
         const n = v.name.toLowerCase();
-        const isNatural =
-          n.includes("natural") ||
-          n.includes("online") ||
-          n.includes("neural") ||
-          n.includes("enhanced") ||
-          n.includes("google");
-        return isNatural && n.includes(kw);
+        return n.includes(kw) && isVoiceGenderCompatible(v.name, profile.gender);
       });
       if (found) return { voice: found, displayName: found.name, isAvailable: true };
     }
 
-    // 3b. Any voice in region with specific name keyword
-    for (const kw of profile.preferredKeywords) {
-      const found = regionalVoices.find((v) => v.name.toLowerCase().includes(kw));
-      if (found) return { voice: found, displayName: found.name, isAvailable: true };
+    // 3b. Any regional voice matching target gender
+    const compatibleGenderVoice = regionalVoices.find((v) =>
+      isVoiceGenderCompatible(v.name, profile.gender)
+    );
+    if (compatibleGenderVoice) {
+      return {
+        voice: compatibleGenderVoice,
+        displayName: compatibleGenderVoice.name,
+        isAvailable: true,
+      };
     }
-
-    // 3c. Filter by gender keyword in voice name
-    const genderVoice = regionalVoices.find((v) => {
-      const n = v.name.toLowerCase();
-      return profile.gender === "female"
-        ? n.includes("female") || n.includes("woman") || n.includes("zira") || n.includes("jenny") || n.includes("sonia")
-        : n.includes("male") || n.includes("man") || n.includes("david") || n.includes("guy") || n.includes("ryan") || n.includes("george");
-    });
-    if (genderVoice) return { voice: genderVoice, displayName: genderVoice.name, isAvailable: true };
-
-    // 3d. Any natural voice in region
-    const naturalInRegion = regionalVoices.find((v) => {
-      const n = v.name.toLowerCase();
-      return (
-        n.includes("natural") ||
-        n.includes("online") ||
-        n.includes("neural") ||
-        n.includes("enhanced") ||
-        n.includes("google")
-      );
-    });
-    if (naturalInRegion) return { voice: naturalInRegion, displayName: naturalInRegion.name, isAvailable: true };
-
-    // 3e. First available regional voice
-    return { voice: regionalVoices[0], displayName: regionalVoices[0].name, isAvailable: true };
   }
 
-  // 4. If region is NOT installed in browser/OS, return unavailable (Do NOT guess / Do NOT play mismatched US voice)
+  // 4. If genuine matching gender voice for this region is NOT installed, return unavailable (NO GUESSING)
   return {
     voice: null,
     displayName: "Chưa hỗ trợ trên thiết bị này",
