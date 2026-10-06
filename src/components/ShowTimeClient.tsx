@@ -43,66 +43,57 @@ function getSupportedMimeType(): string | undefined {
   const types = [
     "audio/webm;codecs=opus",
     "audio/webm",
-    "audio/mp4",
-    "audio/aac",
     "audio/ogg;codecs=opus",
-    "audio/ogg",
+    "audio/mp4",
     "audio/wav",
   ];
-  for (const t of types) {
-    try {
-      if (typeof MediaRecorder.isTypeSupported === "function" && MediaRecorder.isTypeSupported(t)) {
-        return t;
-      }
-    } catch {
-      // continue
-    }
-  }
-  return undefined;
+  return types.find((t) => MediaRecorder.isTypeSupported(t));
 }
 
-// Accurately decode audio duration for all formats (especially MediaRecorder .webm)
-async function getAudioDuration(file: File): Promise<number> {
+// Accurate helper to get precise audio duration for uploaded files
+function getAudioDuration(file: File): Promise<number> {
   return new Promise((resolve) => {
     try {
-      const AudioContextClass =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextClass) {
-        resolve(0);
-        return;
-      }
-      const audioCtx = new AudioContextClass();
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        try {
-          const arrayBuffer = e.target?.result as ArrayBuffer;
-          if (!arrayBuffer) {
-            audioCtx.close().catch(() => {});
-            resolve(0);
-            return;
-          }
-          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
-          const duration = audioBuffer.duration;
-          audioCtx.close().catch(() => {});
-          resolve(duration && isFinite(duration) ? duration : 0);
-        } catch {
-          audioCtx.close().catch(() => {});
-          resolve(0);
+      const audio = document.createElement("audio");
+      audio.preload = "metadata";
+      const objectUrl = URL.createObjectURL(file);
+      audio.src = objectUrl;
+
+      audio.onloadedmetadata = () => {
+        URL.revokeObjectURL(objectUrl);
+        if (isFinite(audio.duration) && audio.duration > 0) {
+          resolve(audio.duration);
+        } else {
+          // Fallback: try reading with Web Audio API AudioContext
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const arrayBuffer = e.target?.result as ArrayBuffer;
+            if (!arrayBuffer) return resolve(0);
+            const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+            if (!AudioCtx) return resolve(0);
+            const ctx = new AudioCtx();
+            ctx.decodeAudioData(
+              arrayBuffer,
+              (decoded) => resolve(decoded.duration),
+              () => resolve(0)
+            );
+          };
+          reader.onerror = () => resolve(0);
+          reader.readAsArrayBuffer(file);
         }
       };
-      reader.onerror = () => {
-        audioCtx.close().catch(() => {});
+
+      audio.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
         resolve(0);
       };
-      reader.readAsArrayBuffer(file);
     } catch {
       resolve(0);
     }
   });
 }
 
-// ── Speaker Circular SVG Timer (Counts down 120s) ───────────────────────────
+// ── Speaker Circular Timer (SVG) ──────────────────────────────────────────
 function SpeakerCircularTimer({
   timeLeft,
   running,
@@ -112,16 +103,16 @@ function SpeakerCircularTimer({
   running: boolean;
   isRecording: boolean;
 }) {
-  const color = timerColor(timeLeft, SPEAKER_DURATION);
-  const isFull = timeLeft === SPEAKER_DURATION;
-  const progress = Math.max(0, Math.min(1, timeLeft / SPEAKER_DURATION));
+  const isFull = timeLeft >= SPEAKER_DURATION;
+  const progress = timeLeft / SPEAKER_DURATION;
   const offset = TIMER_CIRCUM * (1 - progress);
+  const color = timerColor(timeLeft, SPEAKER_DURATION);
 
   const mins = String(Math.floor(timeLeft / 60)).padStart(2, "0");
   const secs = String(timeLeft % 60).padStart(2, "0");
 
   return (
-    <div className="relative flex items-center justify-center" style={{ width: 260, height: 260 }}>
+    <div className="relative flex items-center justify-center w-[220px] h-[220px] sm:w-[260px] sm:h-[260px]">
       <svg
         width={260}
         height={260}
@@ -163,8 +154,8 @@ function SpeakerCircularTimer({
 
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none p-4">
         <div
-          className="font-bold tracking-tight font-mono text-slate-900"
-          style={{ fontSize: 52, lineHeight: 1.1, color }}
+          className="font-bold tracking-tight font-mono text-slate-900 text-4xl sm:text-5xl"
+          style={{ lineHeight: 1.1, color }}
         >
           {`${mins}:${secs}`}
         </div>
@@ -174,7 +165,7 @@ function SpeakerCircularTimer({
             <span className="w-2 h-2 rounded-full bg-rose-600 inline-block" /> Đang ghi âm micro
           </div>
         ) : !running && isFull ? (
-          <div className="text-sm font-bold uppercase tracking-wider text-slate-500 mt-2">
+          <div className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-500 mt-2">
             2 Phút Luyện Nói
           </div>
         ) : running ? (
@@ -216,7 +207,7 @@ function ListenerAudioCircularTimer({
   const strokeColor = "#7c3aed"; // Purple Accent for Listener
 
   return (
-    <div className="relative flex items-center justify-center" style={{ width: 260, height: 260 }}>
+    <div className="relative flex items-center justify-center w-[220px] h-[220px] sm:w-[260px] sm:h-[260px]">
       <svg
         width={260}
         height={260}
@@ -251,8 +242,8 @@ function ListenerAudioCircularTimer({
         {hasAudio ? (
           <>
             <div
-              className="font-bold tracking-tight font-mono text-purple-700"
-              style={{ fontSize: 44, lineHeight: 1.1 }}
+              className="font-bold tracking-tight font-mono text-purple-700 text-3xl sm:text-4xl"
+              style={{ lineHeight: 1.1 }}
             >
               {curMins}:{curSecs}
             </div>
@@ -262,7 +253,7 @@ function ListenerAudioCircularTimer({
 
             {isPlaying ? (
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-xs font-bold text-purple-700 animate-pulse mt-2 shadow-2xs">
-                <span className="w-2 h-2 rounded-full bg-purple-600 inline-block" /> Đang phát bản ghi âm
+                <span className="w-2 h-2 rounded-full bg-purple-600 inline-block" /> Đang phát audio
               </div>
             ) : currentTime > 0 ? (
               <div className="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full mt-2">
@@ -276,7 +267,7 @@ function ListenerAudioCircularTimer({
           </>
         ) : (
           <div className="flex flex-col items-center gap-2 text-slate-400 p-2">
-            <UploadCloud className="w-10 h-10 text-slate-400" />
+            <UploadCloud className="w-9 h-9 sm:w-10 sm:h-10 text-slate-400" />
             <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Chưa tải file ghi âm
             </div>
@@ -302,63 +293,63 @@ function SpeakerChecklist({ steps }: { steps: Topic["steps"] }) {
   const pct = steps.length > 0 ? Math.round((done / steps.length) * 100) : 0;
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-sm space-y-5">
+    <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-7 shadow-sm space-y-4 sm:space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center font-bold">
-            <Layers className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center font-bold shrink-0">
+            <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <div>
-            <div className="font-bold text-base sm:text-lg text-slate-900 font-heading">
+            <div className="font-bold text-sm sm:text-lg text-slate-900 font-heading">
               Checklist 7 Bước Bài Nói
             </div>
-            <p className="text-sm text-slate-600">
+            <p className="text-xs sm:text-sm text-slate-600">
               Đánh dấu tích khi bạn hoàn thành từng phần trong bài phát biểu 2 phút
             </p>
           </div>
         </div>
 
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-200 text-sm font-bold text-indigo-800">
-          <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+        <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-indigo-50 border border-indigo-200 text-xs sm:text-sm font-bold text-indigo-800">
+          <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600" />
           <span>{done} / {steps.length} bước ({pct}%)</span>
         </div>
       </div>
 
-      <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden p-0.5">
+      <div className="w-full bg-slate-100 rounded-full h-2.5 sm:h-3 overflow-hidden p-0.5">
         <div
           className="bg-indigo-600 h-full rounded-full transition-all duration-300"
           style={{ width: `${pct}%` }}
         />
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-3 pt-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 pt-1">
         {steps.map((step, i) => (
           <button
             key={step.step}
             type="button"
             onClick={() => toggle(i)}
-            className={`flex items-start gap-3.5 text-left p-4 rounded-2xl border transition-all cursor-pointer ${
+            className={`flex items-start gap-3 text-left p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer ${
               checked[i]
                 ? "bg-emerald-50/70 border-emerald-300 text-emerald-950"
                 : "bg-slate-50/50 hover:bg-slate-100/70 border-slate-200 text-slate-900 hover:border-slate-300"
             }`}
           >
             <div
-              className={`w-6 h-6 rounded-xl flex items-center justify-center border shrink-0 mt-0.5 transition-colors ${
+              className={`w-5 h-5 sm:w-6 sm:h-6 rounded-xl flex items-center justify-center border shrink-0 mt-0.5 transition-colors ${
                 checked[i]
                   ? "bg-emerald-600 border-emerald-600 text-white"
                   : "bg-white border-slate-300 text-transparent"
               }`}
             >
-              <Check className="w-4 h-4 stroke-[3]" />
+              <Check className="w-3.5 h-3.5 stroke-[3]" />
             </div>
 
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold font-mono px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-bold font-mono px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
                   BƯỚC {step.step}
                 </span>
-                <span className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                <span className="text-xs sm:text-base font-bold text-slate-900 truncate">
                   {step.title}
                 </span>
               </div>
@@ -386,6 +377,7 @@ function ListenerCollocationHUD({
   heardSet: Set<string>;
   toggleItem: (item: string) => void;
   resetHeard?: () => void;
+  isListening?: boolean;
 }) {
   const allItems = useMemo(
     () => (topic.collocations || []).flatMap((c) => c.items || []),
@@ -395,78 +387,79 @@ function ListenerCollocationHUD({
   const total = allItems.length;
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-sm space-y-6">
+    <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-7 shadow-sm space-y-4 sm:space-y-5">
+      {/* HUD Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-purple-50 border border-purple-200 text-purple-700 flex items-center justify-center font-bold">
-            <Radio className="w-5 h-5" />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-purple-50 border border-purple-200 text-purple-700 flex items-center justify-center font-bold shrink-0">
+            <Radio className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
           </div>
           <div>
-            <div className="font-bold text-base sm:text-lg text-slate-900 font-heading flex items-center gap-2">
-              Collocation Spotter (Bắt Cụm Từ Bài Nói)
-            </div>
-            <p className="text-sm text-slate-600">
-              Vừa nghe bản ghi âm vừa bấm chọn các cụm từ (Collocations) mà bạn mình đã phát âm chính xác
+            <h2 className="font-bold text-sm sm:text-lg text-slate-900 font-heading m-0">
+              Live Collocation Spotter (Chấm Cụm Từ Bài Nói)
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-600">
+              Khi nghe thấy bạn nói cụm từ nào, click chọn để tính điểm Lexical Resource.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          {resetHeard && heardSet.size > 0 && (
+        <div className="flex items-center gap-2">
+          {resetHeard && count > 0 && (
             <button
               type="button"
               onClick={resetHeard}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 rounded-full px-3 py-1.5 transition-all cursor-pointer shadow-2xs active:scale-95"
-              title="Đặt lại toàn bộ từ đã chọn"
+              className="text-xs font-bold text-slate-500 hover:text-rose-600 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-rose-50 transition-all cursor-pointer"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Đặt lại</span>
+              Đặt lại
             </button>
           )}
 
-          <span className="inline-flex items-center gap-2 text-sm font-bold bg-purple-50 text-purple-800 border border-purple-200 rounded-full px-4 py-1.5 shadow-2xs">
-            <Award className="w-4 h-4 text-purple-600" />
-            <span>Đã bắt được: {count} / {total} từ</span>
-          </span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-purple-50 border border-purple-200 text-xs sm:text-sm font-bold text-purple-800">
+            <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600" />
+            <span>
+              {count} / {total} cụm từ ({total > 0 ? Math.round((count / total) * 100) : 0}%)
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Categories */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* Progress Bar */}
+      <div className="w-full bg-slate-100 rounded-full h-2.5 sm:h-3 overflow-hidden p-0.5">
+        <div
+          className="bg-purple-600 h-full rounded-full transition-all duration-300"
+          style={{ width: `${total > 0 ? (count / total) * 100 : 0}%` }}
+        />
+      </div>
+
+      {/* Categories & Interactive Pills */}
+      <div className="space-y-4 pt-1">
         {(topic.collocations || []).map((cat) => (
-          <div
-            key={cat.category}
-            className="bg-slate-50/80 rounded-2xl p-4 sm:p-5 border border-slate-200 space-y-3"
-          >
-            <div className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center justify-between border-b border-slate-200/80 pb-2">
+          <div key={cat.category} className="space-y-2">
+            <div className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
               <span>{cat.category}</span>
-              <span className="text-xs text-slate-500 font-semibold font-mono">
-                {(cat.items || []).filter((i) => heardSet.has(i.toLowerCase().trim())).length} /{" "}
-                {(cat.items || []).length}
-              </span>
             </div>
 
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap gap-2">
               {(cat.items || []).map((item) => {
-                const active = heardSet.has(item.toLowerCase().trim());
+                const isHeard = heardSet.has(item);
                 return (
                   <button
                     key={item}
                     type="button"
                     onClick={() => toggleItem(item)}
-                    className={`text-xs sm:text-sm font-bold px-3 py-2 rounded-xl border transition-colors duration-150 cursor-pointer flex items-center gap-1.5 select-none ${
-                      active
-                        ? "bg-purple-700 text-white border-purple-700 shadow-2xs"
-                        : "bg-white text-slate-800 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+                    className={`inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold px-3 py-1.5 rounded-xl border transition-all cursor-pointer select-none active:scale-95 ${
+                      isHeard
+                        ? "bg-purple-700 text-white border-purple-700 shadow-xs scale-102"
+                        : "bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200"
                     }`}
                   >
-                    <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                      {active ? (
-                        <Check className="w-4 h-4 stroke-[2.5]" />
-                      ) : (
-                        <span className="w-2 h-2 rounded-full bg-slate-400" />
-                      )}
-                    </span>
+                    {isHeard ? (
+                      <Check className="w-3.5 h-3.5 stroke-[3] text-white" />
+                    ) : (
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                    )}
                     <span>{item}</span>
                   </button>
                 );
@@ -514,89 +507,54 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
   const [role, setRole] = useState<"speaker" | "listener">("speaker");
   const [sessionLogged, setSessionLogged] = useState(false);
 
-  // ── Speaker Mode State ───────────────────────────────────────────────────
+  // ── Speaker Mode State ──────────────────────────────────────────────────
   const [speakerTimeLeft, setSpeakerTimeLeft] = useState(SPEAKER_DURATION);
   const [speakerRunning, setSpeakerRunning] = useState(false);
+  const speakerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const [speakerRecordState, setSpeakerRecordState] = useState<"idle" | "recording" | "done">("idle");
   const [speakerRecordedSeconds, setSpeakerRecordedSeconds] = useState(0);
   const [speakerAudioUrl, setSpeakerAudioUrl] = useState<string | null>(null);
-  const [speakerMimeType, setSpeakerMimeType] = useState<string>("audio/webm");
-  const [speakerUploadStatus, setSpeakerUploadStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
   const [speakerRemoteAudioUrl, setSpeakerRemoteAudioUrl] = useState<string | null>(null);
+  const [speakerUploadStatus, setSpeakerUploadStatus] = useState<"idle" | "uploading" | "done" | "failed">("idle");
+  const [speakerMimeType, setSpeakerMimeType] = useState<string>("audio/webm");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const speakerRecIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const speakerTimerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const speakerRecIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ── Listener Mode State (Uploaded Audio File - Ephemeral memory only) ─────
+  // ── Listener Mode State ─────────────────────────────────────────────────
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadedAudioUrl, setUploadedAudioUrl] = useState<string | null>(null);
-  const [audioDuration, setAudioDuration] = useState<number>(0);
-  const [audioCurrentTime, setAudioCurrentTime] = useState<number>(0);
-  const [audioPlaying, setAudioPlaying] = useState<boolean>(false);
-  const [audioPlaybackRate, setAudioPlaybackRate] = useState<number>(1.0);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
 
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
   const confettiFiredRef = useRef(false);
 
-  // Confetti when ≥8 collocations
-  useEffect(() => {
-    if (heardSet.size >= 8 && !confettiFiredRef.current) {
-      confettiFiredRef.current = true;
-      import("canvas-confetti").then((mod) => {
-        const confetti = mod.default;
-        confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 } });
-      });
-    }
-  }, [heardSet.size]);
-
-  // Web Audio Beep sound
-  const beep = useCallback((freq = 880, duration = 0.15) => {
-    try {
-      const ctx = audioCtxRef.current ?? (audioCtxRef.current = new AudioContext());
-      if (ctx.state === "suspended") {
-        ctx.resume();
-      }
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = freq;
-      gain.gain.value = 0.2;
-      osc.start();
-      osc.stop(ctx.currentTime + duration);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  // Log session to DB (with optional 96kbps Supabase Storage Audio URL)
   const logSession = useCallback(
-    async (spentDuration?: number, audioUrl?: string | null) => {
+    async (spokenDurationSec: number, audioUrl?: string) => {
       if (sessionLogged) return;
       setSessionLogged(true);
-      try {
-        const finalDuration =
-          spentDuration ??
-          (role === "speaker"
-            ? SPEAKER_DURATION - speakerTimeLeft
-            : Math.round(audioDuration));
 
+      try {
         await fetch("/api/practice", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            topic_id: topic.id,
-            slug: topic.slug,
+            topic_id: topic.id === "seed-fallback" ? null : topic.id,
+            topic_slug: topic.slug,
             student_id: studentInfo?.id || null,
-            student_nickname: nickname || "Student",
-            class_name: studentInfo?.class_name || null,
+            student_nickname: studentInfo ? studentInfo.name : nickname,
+            class_name: studentInfo ? studentInfo.class_name : "Tự do",
             role,
-            duration_seconds: Math.max(1, finalDuration),
+            spoken_duration_seconds:
+              role === "speaker"
+                ? Math.max(1, SPEAKER_DURATION - speakerTimeLeft)
+                : Math.max(1, spokenDurationSec || Math.round(audioDuration)),
             collocations_heard_count: heardSet.size,
             audio_url: audioUrl || speakerRemoteAudioUrl || null,
           }),
@@ -619,7 +577,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
     ]
   );
 
-  // Upload 96kbps recording to Supabase Storage
+  // Upload recording to Supabase Storage
   const uploadRecordedAudio = useCallback(
     async (blob: Blob, durationSec: number) => {
       setSpeakerUploadStatus("uploading");
@@ -640,80 +598,50 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
           body: formData,
         });
 
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || "Không thể tải lên Supabase Storage");
-        }
-
         const data = await res.json();
-        if (data.audio_url) {
-          setSpeakerRemoteAudioUrl(data.audio_url);
-          setSpeakerUploadStatus("success");
-          await logSession(durationSec, data.audio_url);
+        if (res.ok && data.url) {
+          setSpeakerRemoteAudioUrl(data.url);
+          setSpeakerUploadStatus("done");
+          logSession(durationSec, data.url);
         } else {
-          setSpeakerUploadStatus("error");
-          await logSession(durationSec);
+          setSpeakerUploadStatus("failed");
+          logSession(durationSec);
         }
-      } catch (err: unknown) {
-        console.error("Audio upload error:", err);
-        setSpeakerUploadStatus("error");
-        await logSession(durationSec);
+      } catch {
+        setSpeakerUploadStatus("failed");
+        logSession(durationSec);
       }
     },
     [speakerMimeType, topic.slug, logSession]
   );
 
-  // ── Speaker Mode Logic ───────────────────────────────────────────────────
-  const stopSpeakerRecording = useCallback(() => {
-    if (speakerRecIntervalRef.current) {
-      clearInterval(speakerRecIntervalRef.current);
-      speakerRecIntervalRef.current = null;
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch {
-        // ignore
-      }
-    }
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach((t) => t.stop());
-      audioStreamRef.current = null;
-    }
-  }, []);
-
-  const startSpeakerRecording = useCallback(async () => {
-    if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      alert("Microphone recording is not supported in this browser.");
-      return false;
+  // Start speaker recording & timer
+  const handleSpeakerStartWithRecord = async () => {
+    if (speakerRecordState === "recording") {
+      stopSpeakerRecording();
+      return;
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStreamRef.current = stream;
-
-      const mimeType = getSupportedMimeType();
-      const recorderOptions: MediaRecorderOptions = {
-        audioBitsPerSecond: 96000, // 96 kbps High-Quality voice encoding
-      };
-      if (mimeType) {
-        recorderOptions.mimeType = mimeType;
-        setSpeakerMimeType(mimeType);
-      }
-
-      let recorder: MediaRecorder;
-      try {
-        recorder = new MediaRecorder(stream, recorderOptions);
-      } catch {
-        recorder = new MediaRecorder(stream);
-      }
-
       audioChunksRef.current = [];
 
+      const mimeType = getSupportedMimeType();
+      if (mimeType) setSpeakerMimeType(mimeType);
+
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType
+          ? {
+              mimeType,
+              audioBitsPerSecond: 96000,
+            }
+          : { audioBitsPerSecond: 96000 }
+      );
+
       recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
+        if (e.data.size > 0) {
           audioChunksRef.current.push(e.data);
         }
       };
@@ -747,94 +675,95 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
         setSpeakerRecordedSeconds((s) => s + 1);
       }, 1000);
 
-      return true;
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      alert(`Could not start microphone: ${errorMsg}. Please allow microphone permission.`);
-      return false;
-    }
-  }, [speakerAudioUrl, uploadRecordedAudio, speakerTimeLeft]);
-
-  const startSpeakerTimer = useCallback(() => {
-    if (speakerRunning) return;
-    setSpeakerRunning(true);
-    setSessionLogged(false);
-
-    speakerTimerIntervalRef.current = setInterval(() => {
-      setSpeakerTimeLeft((prev) => {
-        if (prev <= 1) {
-          if (speakerTimerIntervalRef.current) {
-            clearInterval(speakerTimerIntervalRef.current);
-            speakerTimerIntervalRef.current = null;
-          }
-          setSpeakerRunning(false);
-          const wasRecording = speakerRecordState === "recording";
-          stopSpeakerRecording();
-          beep(1046, 0.4);
-
-          import("canvas-confetti").then((mod) => {
-            const confetti = mod.default;
-            confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 } });
-          });
-
-          if (!wasRecording) {
-            logSession(SPEAKER_DURATION);
-          }
-          return 0;
-        }
-        const next = prev - 1;
-        if (next <= 10 && next > 0) {
-          beep(880, 0.08);
-        }
-        return next;
-      });
-    }, 1000);
-  }, [speakerRunning, speakerRecordState, beep, logSession, stopSpeakerRecording]);
-
-  const pauseSpeakerTimer = useCallback(() => {
-    if (speakerTimerIntervalRef.current) {
-      clearInterval(speakerTimerIntervalRef.current);
-      speakerTimerIntervalRef.current = null;
-    }
-    setSpeakerRunning(false);
-  }, []);
-
-  const handleSpeakerStartWithRecord = useCallback(async () => {
-    if (speakerRecordState === "recording") {
-      stopSpeakerRecording();
-      pauseSpeakerTimer();
-      return;
-    }
-
-    const micStarted = await startSpeakerRecording();
-    if (micStarted) {
-      if (speakerTimeLeft === 0) {
+      // Reset timer if ended or at start
+      if (speakerTimeLeft === 0 || speakerTimeLeft === SPEAKER_DURATION) {
         setSpeakerTimeLeft(SPEAKER_DURATION);
       }
-      startSpeakerTimer();
+      setSpeakerRunning(true);
+    } catch {
+      alert("Không thể truy cập Microphone. Vui lòng cho phép quyền Microphone trên trình duyệt để ghi âm!");
     }
-  }, [
-    speakerRecordState,
-    stopSpeakerRecording,
-    pauseSpeakerTimer,
-    startSpeakerRecording,
-    speakerTimeLeft,
-    startSpeakerTimer,
-  ]);
+  };
 
-  const resetSpeakerState = useCallback(() => {
-    if (speakerTimerIntervalRef.current) {
-      clearInterval(speakerTimerIntervalRef.current);
-      speakerTimerIntervalRef.current = null;
+  const stopSpeakerRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
     }
-    stopSpeakerRecording();
+    if (speakerRecIntervalRef.current) {
+      clearInterval(speakerRecIntervalRef.current);
+      speakerRecIntervalRef.current = null;
+    }
+    setSpeakerRunning(false);
+  };
+
+  const startSpeakerTimer = () => {
+    if (speakerTimeLeft === 0) setSpeakerTimeLeft(SPEAKER_DURATION);
+    setSpeakerRunning(true);
+  };
+
+  const pauseSpeakerTimer = () => {
+    setSpeakerRunning(false);
+  };
+
+  const resetSpeakerAll = () => {
     setSpeakerRunning(false);
     setSpeakerTimeLeft(SPEAKER_DURATION);
+    stopSpeakerRecording();
+    setSpeakerRecordState("idle");
+    setSpeakerRecordedSeconds(0);
     setSpeakerUploadStatus("idle");
-    confettiFiredRef.current = false;
-  }, [stopSpeakerRecording]);
+    if (speakerAudioUrl) {
+      URL.revokeObjectURL(speakerAudioUrl);
+      setSpeakerAudioUrl(null);
+    }
+    setSpeakerRemoteAudioUrl(null);
+    setSessionLogged(false);
+  };
 
-  // ── Listener Mode Logic (Uploaded Audio Player) ─────────────────────────
+  // Speaker Timer tick
+  useEffect(() => {
+    if (speakerRunning) {
+      speakerIntervalRef.current = setInterval(() => {
+        setSpeakerTimeLeft((t) => {
+          if (t <= 1) {
+            clearInterval(speakerIntervalRef.current!);
+            setSpeakerRunning(false);
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+              stopSpeakerRecording();
+            }
+            return 0;
+          }
+          return t - 1;
+        });
+      }, 1000);
+    } else if (speakerIntervalRef.current) {
+      clearInterval(speakerIntervalRef.current);
+    }
+
+    return () => {
+      if (speakerIntervalRef.current) clearInterval(speakerIntervalRef.current);
+    };
+  }, [speakerRunning]);
+
+  // Clean up speaker resources
+  useEffect(() => {
+    return () => {
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+      if (speakerRecIntervalRef.current) {
+        clearInterval(speakerRecIntervalRef.current);
+      }
+      if (speakerAudioUrl) {
+        URL.revokeObjectURL(speakerAudioUrl);
+      }
+      if (uploadedAudioUrl) {
+        URL.revokeObjectURL(uploadedAudioUrl);
+      }
+    };
+  }, [speakerAudioUrl, uploadedAudioUrl]);
+
+  // ── Listener File Handlers ──────────────────────────────────────────────
   const handleFileUpload = async (file: File) => {
     if (uploadedAudioUrl) {
       URL.revokeObjectURL(uploadedAudioUrl);
@@ -847,7 +776,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
     resetHeard();
     confettiFiredRef.current = false;
 
-    // Decode exact audio duration immediately for webm / mp3 / wav / m4a / ogg
+    // Decode exact audio duration immediately
     const exactDuration = await getAudioDuration(file);
     if (exactDuration > 0) {
       setAudioDuration(exactDuration);
@@ -880,61 +809,31 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
     if (!audioPlayerRef.current) return;
     if (audioPlaying) {
       audioPlayerRef.current.pause();
+      setAudioPlaying(false);
     } else {
-      audioPlayerRef.current.playbackRate = audioPlaybackRate;
-      audioPlayerRef.current.play().catch(() => {});
+      audioPlayerRef.current.play();
+      setAudioPlaying(true);
     }
   };
 
-  const seekAudio = (secs: number) => {
+  const restartAudio = () => {
     if (!audioPlayerRef.current) return;
-    const maxDur = audioDuration > 0 ? audioDuration : 120;
-    const target = Math.max(0, Math.min(maxDur, secs));
-    audioPlayerRef.current.currentTime = target;
-    setAudioCurrentTime(target);
+    audioPlayerRef.current.currentTime = 0;
+    audioPlayerRef.current.play();
+    setAudioPlaying(true);
   };
 
-  const skipAudio = (delta: number) => {
+  const skipAudio = (seconds: number) => {
     if (!audioPlayerRef.current) return;
-    const current = audioPlayerRef.current.currentTime ?? audioCurrentTime;
-    const maxDur = audioDuration > 0 ? audioDuration : 120;
-    const target = Math.max(0, Math.min(maxDur, current + delta));
-    audioPlayerRef.current.currentTime = target;
-    setAudioCurrentTime(target);
+    audioPlayerRef.current.currentTime = Math.max(
+      0,
+      Math.min(audioDuration, audioPlayerRef.current.currentTime + seconds)
+    );
   };
-
-  const changePlaybackRate = (rate: number) => {
-    setAudioPlaybackRate(rate);
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.playbackRate = rate;
-    }
-  };
-
-  // Cleanup on unmount (revokes ephemeral object URLs)
-  useEffect(() => {
-    return () => {
-      if (speakerTimerIntervalRef.current) clearInterval(speakerTimerIntervalRef.current);
-      if (speakerRecIntervalRef.current) clearInterval(speakerRecIntervalRef.current);
-      if (audioStreamRef.current) {
-        audioStreamRef.current.getTracks().forEach((t) => t.stop());
-      }
-      if (speakerAudioUrl) {
-        URL.revokeObjectURL(speakerAudioUrl);
-      }
-      if (uploadedAudioUrl) {
-        URL.revokeObjectURL(uploadedAudioUrl);
-      }
-    };
-  }, [speakerAudioUrl, uploadedAudioUrl]);
 
   const swapRole = (newRole: "speaker" | "listener") => {
-    if (role === newRole) return;
-    resetSpeakerState();
-    if (audioPlayerRef.current) {
-      audioPlayerRef.current.pause();
-    }
-    setAudioPlaying(false);
     setRole(newRole);
+    setSessionLogged(false);
   };
 
   const isSpeakerRecordingActive = speakerRecordState === "recording";
@@ -942,48 +841,48 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-body">
       {/* ── Top Header Banner ────────────────────────────────────────── */}
-      <header className="bg-slate-900 text-white py-4 px-6 border-b border-slate-800 sticky top-0 z-40">
-        <div className="max-w-[960px] mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse inline-block"></span>
-            <span className="font-bold text-base text-white tracking-tight font-heading">
-              Show Time Studio (2 Phút)
-            </span>
+      <header className="bg-slate-900 text-white py-3 sm:py-4 px-4 sm:px-6 border-b border-slate-800 sticky top-0 z-40">
+        <div className="max-w-[960px] mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-2.5 text-xs sm:text-sm text-slate-200 font-bold">
+            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block shrink-0"></span>
+            <span className="tracking-tight font-heading truncate">HappyLearning Showtime Studio</span>
           </div>
-          <div className="text-xs sm:text-sm text-slate-300 font-semibold truncate max-w-[320px] bg-slate-800 px-3.5 py-1.5 rounded-full border border-slate-700">
-            {topic.title}
+
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-bold text-indigo-400">Tracey Le</span>
           </div>
         </div>
       </header>
 
-      <div className="max-w-[960px] mx-auto w-full px-4 py-7 space-y-6">
+      {/* ── Main Container ───────────────────────────────────────────── */}
+      <main className="max-w-[960px] mx-auto w-full px-3.5 sm:px-4 py-4 sm:py-7 flex flex-col gap-4 sm:gap-6">
         {/* Navigation & Student Badge Bar */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-2.5 sm:gap-3">
           <Link
             href={`/topic/${topic.slug}/outline`}
-            className="inline-flex items-center gap-2 text-sm font-bold text-slate-700 hover:text-slate-900 transition-colors bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-2xs hover:bg-slate-100 active:scale-95"
+            className="inline-flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold text-slate-700 hover:text-slate-900 transition-colors bg-white px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl border border-slate-200 shadow-2xs hover:bg-slate-100 active:scale-95 shrink-0"
           >
             <ArrowLeft className="w-4 h-4" /> Xem lại dàn ý
           </Link>
 
           {/* Active Student Pill */}
-          <div className="inline-flex items-center gap-2.5 bg-white px-4 py-2 rounded-2xl border border-slate-200 text-sm font-bold text-slate-800 shadow-2xs">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
-            <span className="text-slate-500">Học viên:</span>
-            <span className="text-indigo-700">
-              {studentInfo ? `${studentInfo.name} (Lớp ${studentInfo.class_name})` : nickname}
+          <div className="inline-flex items-center gap-2 bg-white px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-2xl border border-slate-200 text-xs sm:text-sm font-bold text-slate-800 shadow-2xs">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></div>
+            <span className="text-slate-500 hidden xs:inline">Học viên:</span>
+            <span className="text-indigo-700 truncate max-w-[200px] sm:max-w-none">
+              {studentInfo ? `${studentInfo.name} (${studentInfo.class_name})` : nickname}
             </span>
           </div>
         </div>
 
         {/* ── Role Selector Tabs (Speaker vs Listener) ──────────────────── */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-sm space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-7 shadow-sm space-y-3.5 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
             <div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <div className="text-[11px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Chế Độ Thực Hành
               </div>
-              <div className="text-base sm:text-xl font-bold text-slate-900 font-heading mt-0.5">
+              <div className="text-sm sm:text-xl font-bold text-slate-900 font-heading mt-0.5">
                 {role === "speaker"
                   ? "🎤 Role Speaker (Người Nói 2 Phút)"
                   : "🎧 Role Listener (Tải File Ghi Âm & Đánh Giá)"}
@@ -991,11 +890,11 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
             </div>
 
             {/* Segmented Switcher */}
-            <div className="inline-flex p-1.5 bg-slate-100 rounded-2xl border border-slate-200">
+            <div className="flex flex-col xs:flex-row p-1.5 bg-slate-100 rounded-2xl border border-slate-200 w-full sm:w-auto gap-1">
               <button
                 type="button"
                 onClick={() => swapRole("speaker")}
-                className={`px-5 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                className={`flex-1 sm:flex-initial px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   role === "speaker"
                     ? "bg-indigo-600 text-white shadow-sm"
                     : "text-slate-700 hover:text-slate-900"
@@ -1006,7 +905,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
               <button
                 type="button"
                 onClick={() => swapRole("listener")}
-                className={`px-5 py-2 rounded-xl text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                className={`flex-1 sm:flex-initial px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
                   role === "listener"
                     ? "bg-purple-700 text-white shadow-sm"
                     : "text-slate-700 hover:text-slate-900"
@@ -1017,8 +916,8 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
             </div>
           </div>
 
-          <div className="text-sm text-slate-700 bg-slate-50 rounded-2xl p-4 border border-slate-200 flex items-start gap-3">
-            <Info className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+          <div className="text-xs sm:text-sm text-slate-700 bg-slate-50 rounded-2xl p-3.5 sm:p-4 border border-slate-200 flex items-start gap-2.5 sm:gap-3">
+            <Info className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 shrink-0 mt-0.5" />
             <div className="leading-relaxed">
               {role === "speaker" ? (
                 <>
@@ -1030,8 +929,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                 <>
                   <b className="text-slate-900">Nhiệm vụ Listener:</b> Tải lên file ghi âm bài nói của bạn mình
                   (.mp3, .wav, .m4a, .webm). Đồng hồ sẽ tự động đếm theo thời lượng file và{" "}
-                  <b className="text-purple-700">chỉ chạy khi bạn bấm nghe</b>. Bấm &ldquo;Quét AI&rdquo; hoặc tự
-                  tay chấm các cụm từ (Collocations).
+                  <b className="text-purple-700">chỉ chạy khi bạn bấm nghe</b>. Bấm chọn các cụm từ (Collocations) bạn nghe thấy trong bài.
                 </>
               )}
             </div>
@@ -1042,7 +940,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
         {role === "speaker" && (
           <>
             {/* 2-Minute Practice Timer & Precision Controls */}
-            <div className="bg-white rounded-3xl border border-slate-200 p-8 flex flex-col items-center gap-6 shadow-sm">
+            <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 flex flex-col items-center gap-4 sm:gap-6 shadow-sm">
               <SpeakerCircularTimer
                 timeLeft={speakerTimeLeft}
                 running={speakerRunning}
@@ -1050,10 +948,10 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
               />
 
               {/* Action Control Buttons */}
-              <div className="flex gap-3 flex-wrap justify-center items-center">
+              <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 w-full sm:w-auto justify-center items-center">
                 <button
                   type="button"
-                  className={`h-12 px-7 rounded-2xl text-sm sm:text-base font-bold flex items-center gap-2.5 text-white shadow-sm transition-all cursor-pointer active:scale-95 font-heading ${
+                  className={`w-full sm:w-auto h-11 sm:h-12 px-6 sm:px-7 rounded-2xl text-xs sm:text-base font-bold flex items-center justify-center gap-2.5 text-white shadow-sm transition-all cursor-pointer active:scale-95 font-heading ${
                     isSpeakerRecordingActive
                       ? "bg-rose-600 hover:bg-rose-700 animate-pulse"
                       : "bg-indigo-600 hover:bg-indigo-700"
@@ -1062,7 +960,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                 >
                   {isSpeakerRecordingActive ? (
                     <>
-                      <MicOff className="w-5 h-5" />
+                      <MicOff className="w-4 h-4 sm:w-5 sm:h-5" />
                       <span>
                         Dừng Ghi Âm ({Math.floor(speakerRecordedSeconds / 60)}:
                         {String(speakerRecordedSeconds % 60).padStart(2, "0")})
@@ -1070,153 +968,115 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                     </>
                   ) : (
                     <>
-                      <Mic className="w-5 h-5" />
+                      <Mic className="w-4 h-4 sm:w-5 sm:h-5" />
                       <span>Ghi Âm & Luyện Nói 2 Phút</span>
                     </>
                   )}
                 </button>
 
-                {speakerRunning ? (
-                  <button
-                    type="button"
-                    className="h-12 px-5 rounded-2xl text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
-                    onClick={pauseSpeakerTimer}
-                  >
-                    <Pause className="w-4 h-4" /> Tạm dừng
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="h-12 px-5 rounded-2xl text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
-                    onClick={startSpeakerTimer}
-                    disabled={speakerTimeLeft === 0}
-                  >
-                    <Play className="w-4 h-4" />{" "}
-                    {speakerTimeLeft < SPEAKER_DURATION && speakerTimeLeft > 0
-                      ? "Tiếp tục"
-                      : "Chỉ đếm giờ"}
-                  </button>
-                )}
+                <div className="flex gap-2 w-full sm:w-auto">
+                  {speakerRunning ? (
+                    <button
+                      type="button"
+                      className="flex-1 sm:flex-initial h-11 sm:h-12 px-4 sm:px-5 rounded-2xl text-xs sm:text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                      onClick={pauseSpeakerTimer}
+                    >
+                      <Pause className="w-4 h-4" /> Tạm dừng
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="flex-1 sm:flex-initial h-11 sm:h-12 px-4 sm:px-5 rounded-2xl text-xs sm:text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
+                      onClick={startSpeakerTimer}
+                      disabled={speakerTimeLeft === 0}
+                    >
+                      <Play className="w-4 h-4" />{" "}
+                      {speakerTimeLeft < SPEAKER_DURATION && speakerTimeLeft > 0
+                        ? "Tiếp tục"
+                        : "Chỉ đếm giờ"}
+                    </button>
+                  )}
 
-                <button
-                  type="button"
-                  className="h-12 px-5 rounded-2xl text-sm font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 transition-all cursor-pointer flex items-center gap-2 active:scale-95 shadow-2xs"
-                  onClick={resetSpeakerState}
-                >
-                  <RotateCcw className="w-4 h-4 text-slate-500" /> Làm lại
-                </button>
+                  <button
+                    type="button"
+                    className="flex-1 sm:flex-initial h-11 sm:h-12 px-4 sm:px-5 rounded-2xl text-xs sm:text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                    onClick={resetSpeakerAll}
+                  >
+                    <RotateCcw className="w-4 h-4" /> Đặt lại
+                  </button>
+                </div>
               </div>
+
+              {/* Recorded Audio Feedback Bar */}
+              {speakerAudioUrl && (
+                <div className="w-full bg-indigo-50 border border-indigo-200 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in duration-300">
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                      <FileAudio className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-bold text-indigo-900 font-heading">
+                        Bản Ghi Âm Của Bạn
+                      </div>
+                      <div className="text-xs text-indigo-700 font-medium">
+                        {speakerUploadStatus === "uploading" ? (
+                          <span className="flex items-center gap-1 text-amber-700">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Đang lưu bản ghi âm...
+                          </span>
+                        ) : speakerUploadStatus === "done" ? (
+                          <span className="text-emerald-700 font-bold flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Đã lưu vào bài nộp giáo viên
+                          </span>
+                        ) : (
+                          "Sẵn sàng nghe lại hoặc tải xuống"
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <audio
+                      src={speakerAudioUrl}
+                      controls
+                      className="h-9 w-full sm:w-48 rounded-xl"
+                    />
+                    <a
+                      href={speakerAudioUrl}
+                      download={`speaking-${topic.slug}-2min.${speakerMimeType.includes("mp4") ? "m4a" : "webm"}`}
+                      className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all shadow-2xs shrink-0"
+                      title="Tải audio về máy"
+                    >
+                      <Download className="w-4 h-4" />
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Recorded Audio Player & Actions (Speaker Mode) */}
-            {speakerAudioUrl && (
-              <div className="bg-white rounded-3xl border border-emerald-300 p-6 shadow-sm space-y-4 animate-in fade-in">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="font-bold text-base text-slate-900 flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                    </div>
-                    <span>Bản Ghi Âm Luyện Nói Của Bạn (Chuẩn 96 kbps)</span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {speakerUploadStatus === "uploading" && (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-full animate-pulse">
-                        <Loader2 className="w-3 h-3 animate-spin text-indigo-600" />
-                        Đang lưu lên Supabase Storage...
-                      </span>
-                    )}
-                    {speakerUploadStatus === "success" && (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
-                        <Check className="w-3 h-3 text-emerald-600" />
-                        Đã đồng bộ lên hệ thống giáo viên
-                      </span>
-                    )}
-                    {speakerUploadStatus === "error" && (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-                        <Info className="w-3 h-3 text-amber-600" />
-                        Lưu trữ cục bộ trên máy
-                      </span>
-                    )}
-                    <span className="text-sm font-mono font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-                      Thời lượng: {Math.floor(speakerRecordedSeconds / 60)}:
-                      {String(speakerRecordedSeconds % 60).padStart(2, "0")}
-                    </span>
-                  </div>
-                </div>
-
-                <audio src={speakerAudioUrl} controls className="w-full h-11 rounded-xl" />
-
-                <div className="flex gap-3 justify-end pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (speakerAudioUrl) URL.revokeObjectURL(speakerAudioUrl);
-                      setSpeakerAudioUrl(null);
-                      setSpeakerRemoteAudioUrl(null);
-                      setSpeakerUploadStatus("idle");
-                      setSpeakerRecordState("idle");
-                      setSpeakerRecordedSeconds(0);
-                    }}
-                    className="text-sm font-bold text-slate-600 hover:text-rose-600 px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-rose-50 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-                  >
-                    <Trash2 className="w-4 h-4" /> Xóa & Thu Lại
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!speakerAudioUrl) return;
-                      const ext = speakerMimeType.includes("mp4")
-                        ? "m4a"
-                        : speakerMimeType.includes("ogg")
-                        ? "ogg"
-                        : speakerMimeType.includes("wav")
-                        ? "wav"
-                        : "webm";
-                      const a = document.createElement("a");
-                      a.href = speakerAudioUrl;
-                      a.download = `${topic.slug || "speaking"}-recording.${ext}`;
-                      a.click();
-                    }}
-                    className="text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-sm cursor-pointer active:scale-95"
-                  >
-                    <Download className="w-4 h-4" /> Tải File Ghi Âm Về Máy
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Checklist */}
-            <SpeakerChecklist steps={topic.steps || []} />
+            {/* Speaker 7-step Checklist */}
+            <SpeakerChecklist steps={topic.steps} />
           </>
         )}
 
-        {/* ── MODE 2: LISTENER MODE (Upload & Playback Synced Timer) ──── */}
+        {/* ── MODE 2: LISTENER MODE ───────────────────────────────────── */}
         {role === "listener" && (
           <>
-            {/* Hidden native audio element for precise time sync */}
+            {/* Listener Audio Player Element (Hidden) */}
             {uploadedAudioUrl && (
               <audio
                 ref={audioPlayerRef}
                 src={uploadedAudioUrl}
-                onLoadedMetadata={(e) => {
-                  const d = e.currentTarget.duration;
-                  if (!isNaN(d) && isFinite(d) && d > 0) {
-                    setAudioDuration(d);
-                  }
+                preload="metadata"
+                onTimeUpdate={() => {
                   if (audioPlayerRef.current) {
-                    audioPlayerRef.current.playbackRate = audioPlaybackRate;
+                    setAudioCurrentTime(audioPlayerRef.current.currentTime);
                   }
                 }}
-                onTimeUpdate={(e) => {
-                  setAudioCurrentTime(e.currentTarget.currentTime);
-                }}
-                onPlay={() => {
-                  setAudioPlaying(true);
-                  if (audioPlayerRef.current) {
-                    audioPlayerRef.current.playbackRate = audioPlaybackRate;
+                onLoadedMetadata={() => {
+                  if (audioPlayerRef.current && audioPlayerRef.current.duration > 0) {
+                    setAudioDuration(audioPlayerRef.current.duration);
                   }
                 }}
-                onPause={() => setAudioPlaying(false)}
                 onEnded={() => {
                   setAudioPlaying(false);
                   logSession(Math.round(audioDuration));
@@ -1226,7 +1086,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
 
             {/* Upload Box if no file is uploaded yet */}
             {!uploadedFile ? (
-              <div className="bg-white rounded-3xl border-2 border-dashed border-purple-200 hover:border-purple-400 p-8 sm:p-12 text-center shadow-sm space-y-4 transition-all">
+              <div className="bg-white rounded-3xl border-2 border-dashed border-purple-200 hover:border-purple-400 p-6 sm:p-12 text-center shadow-sm space-y-4 transition-all">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1235,104 +1095,45 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                   onChange={handleFileChange}
                 />
 
-                <div className="w-16 h-16 rounded-3xl bg-purple-50 border border-purple-200 text-purple-700 flex items-center justify-center mx-auto shadow-2xs">
-                  <UploadCloud className="w-8 h-8" />
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-3xl bg-purple-50 border border-purple-200 text-purple-700 flex items-center justify-center mx-auto shadow-2xs">
+                  <UploadCloud className="w-7 h-7 sm:w-8 sm:h-8" />
                 </div>
 
                 <div className="space-y-1.5 max-w-md mx-auto">
-                  <h3 className="text-lg sm:text-xl font-bold font-heading text-slate-900 m-0">
-                    Tải Lên Bản Ghi Âm Của Bạn Học
+                  <h3 className="text-base sm:text-xl font-bold font-heading text-slate-900 m-0">
+                    Tải File Ghi Âm Của Bạn Mình
                   </h3>
-                  <p className="text-sm text-slate-600 leading-relaxed">
-                    Chọn file âm thanh (.mp3, .m4a, .wav, .webm) từ máy tính hoặc điện thoại để bắt đầu chấm điểm
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    (File chỉ lưu tạm thời trên bộ nhớ trình duyệt, tự động xóa khi tải lại trang)
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    Hỗ trợ định dạng âm thanh <b>MP3, WAV, M4A, WEBM, OGG</b>. Đồng hồ sẽ tự động đồng bộ theo độ dài file thực tế.
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="h-12 px-7 rounded-2xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-sm sm:text-base shadow-sm transition-all inline-flex items-center gap-2 cursor-pointer active:scale-95 font-heading"
+                  className="h-11 sm:h-12 px-6 sm:px-7 rounded-2xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer active:scale-95 font-heading inline-flex items-center gap-2"
                 >
-                  <FileAudio className="w-5 h-5" /> Chọn File Bản Ghi Âm
+                  <FileAudio className="w-4 h-4" /> Chọn File Từ Thiết Bị
                 </button>
               </div>
             ) : (
-              /* Uploaded Audio Info & Synchronized Playback Studio */
-              <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
-                {/* File Header Details */}
-                <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-slate-100">
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-11 h-11 rounded-2xl bg-purple-50 border border-purple-200 text-purple-700 flex items-center justify-center font-bold shrink-0">
-                      <FileAudio className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-base text-slate-900 line-clamp-1">
-                        {uploadedFile.name}
-                      </div>
-                      <div className="text-xs text-slate-500 flex items-center gap-2 font-mono mt-0.5">
-                        <span>{(uploadedFile.size / (1024 * 1024)).toFixed(2)} MB</span>
-                        <span>•</span>
-                        <span>
-                          Thời lượng: {Math.floor(audioDuration / 60)}:
-                          {String(Math.floor(audioDuration % 60)).padStart(2, "0")}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+              /* Synchronized Circular Audio Player HUD */
+              <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-8 flex flex-col items-center gap-4 sm:gap-6 shadow-sm">
+                <ListenerAudioCircularTimer
+                  currentTime={audioCurrentTime}
+                  totalDuration={audioDuration}
+                  isPlaying={audioPlaying}
+                  hasAudio={Boolean(uploadedAudioUrl)}
+                />
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={removeUploadedFile}
-                      className="text-xs font-bold text-slate-600 hover:text-rose-600 px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-rose-50 transition-all flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" /> Đổi file khác
-                    </button>
-                  </div>
-                </div>
-
-                {/* Circular Timer & Synchronized Controls */}
-                <div className="flex flex-col items-center gap-6 py-2">
-                  <ListenerAudioCircularTimer
-                    currentTime={audioCurrentTime}
-                    totalDuration={audioDuration}
-                    isPlaying={audioPlaying}
-                    hasAudio={true}
-                  />
-
-                  {/* Scrubber Slider */}
-                  <div className="w-full max-w-md space-y-1.5">
-                    <input
-                      type="range"
-                      min={0}
-                      max={audioDuration || 120}
-                      step={0.1}
-                      value={audioCurrentTime}
-                      onChange={(e) => seekAudio(parseFloat(e.target.value))}
-                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-700"
-                    />
-                    <div className="flex justify-between text-xs font-mono font-bold text-slate-500">
-                      <span>
-                        {String(Math.floor(audioCurrentTime / 60)).padStart(2, "0")}:
-                        {String(Math.floor(audioCurrentTime % 60)).padStart(2, "0")}
-                      </span>
-                      <span>
-                        {String(Math.floor(audioDuration / 60)).padStart(2, "0")}:
-                        {String(Math.floor(audioDuration % 60)).padStart(2, "0")}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Playback Control Buttons */}
-                  <div className="flex items-center gap-3 flex-wrap justify-center">
+                {/* Audio Controls */}
+                <div className="flex flex-col items-center gap-3 w-full">
+                  <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
                     <button
                       type="button"
                       onClick={() => skipAudio(-5)}
-                      className="h-11 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                      title="Lùi 5 giây"
+                      className="h-10 sm:h-11 px-3 sm:px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                      title="Lùi 5s"
                     >
                       <Rewind className="w-4 h-4" /> -5s
                     </button>
@@ -1340,15 +1141,15 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                     <button
                       type="button"
                       onClick={togglePlayAudio}
-                      className="h-13 px-8 rounded-2xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-base flex items-center gap-2.5 shadow-sm transition-all cursor-pointer active:scale-95 font-heading"
+                      className="h-11 sm:h-13 px-6 sm:px-8 rounded-2xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-sm sm:text-base flex items-center gap-2 shadow-sm transition-all cursor-pointer active:scale-95 font-heading"
                     >
                       {audioPlaying ? (
                         <>
-                          <Pause className="w-5 h-5 fill-white" /> Tạm Dừng
+                          <Pause className="w-4 h-4 sm:w-5 sm:h-5 fill-white" /> Tạm Dừng
                         </>
                       ) : (
                         <>
-                          <Play className="w-5 h-5 fill-white" /> Nghe Bài Nói
+                          <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-white" /> Nghe Bài Nói
                         </>
                       )}
                     </button>
@@ -1356,35 +1157,43 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                     <button
                       type="button"
                       onClick={() => skipAudio(5)}
-                      className="h-11 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                      title="Tua tới 5 giây"
+                      className="h-10 sm:h-11 px-3 sm:px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                      title="Tới 5s"
                     >
                       +5s <FastForward className="w-4 h-4" />
                     </button>
 
-                    {/* Speed options */}
-                    <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-bold">
-                      {[0.75, 1.0, 1.25].map((rate) => (
-                        <button
-                          key={rate}
-                          type="button"
-                          onClick={() => changePlaybackRate(rate)}
-                          className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                            audioPlaybackRate === rate
-                              ? "bg-white text-purple-800 shadow-2xs font-black"
-                              : "text-slate-600 hover:text-slate-900"
-                          }`}
-                        >
-                          {rate}x
-                        </button>
-                      ))}
+                    <button
+                      type="button"
+                      onClick={restartAudio}
+                      className="h-10 sm:h-11 px-3 sm:px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-1 transition-all cursor-pointer active:scale-95"
+                      title="Nghe lại từ đầu"
+                    >
+                      <RotateCcw className="w-4 h-4" /> Lại từ đầu
+                    </button>
+                  </div>
+
+                  {/* Active File info bar */}
+                  <div className="flex items-center justify-between w-full max-w-md bg-purple-50 border border-purple-200 rounded-2xl px-3.5 sm:px-4 py-2 text-xs font-bold text-purple-900 gap-2">
+                    <div className="flex items-center gap-2 truncate min-w-0">
+                      <FileAudio className="w-4 h-4 text-purple-700 shrink-0" />
+                      <span className="truncate">{uploadedFile.name}</span>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={removeUploadedFile}
+                      className="text-rose-600 hover:text-rose-800 p-1 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                      title="Đổi file khác"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Collocation Spotter HUD */}
+            {/* Listener Collocation Spotter HUD */}
             <ListenerCollocationHUD
               topic={topic}
               heardSet={heardSet}
@@ -1393,10 +1202,10 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
             />
           </>
         )}
-      </div>
+      </main>
 
-      <footer className="text-center py-6 text-sm text-slate-500 font-medium border-t border-slate-200 bg-white mt-auto">
-        HappyLearning Speaking Studio • Teacher Tracey Le
+      <footer className="text-center py-6 text-xs sm:text-sm text-slate-500 font-medium border-t border-slate-200 bg-white mt-auto">
+        HappyLearning Showtime Studio • Teacher Tracey Le
       </footer>
     </div>
   );

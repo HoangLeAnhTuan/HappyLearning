@@ -20,6 +20,14 @@ export interface VoiceProfile {
   region: string;
   flag: string;
   systemVoiceName: string;
+  isAvailable: boolean;
+  sampleGreeting: string;
+}
+
+export interface UnsupportedVoiceState {
+  isOpen: boolean;
+  profile: VoiceProfile | null;
+  availableProfiles: VoiceProfile[];
 }
 
 const PROFILE_DEFINITIONS: Array<{
@@ -161,11 +169,11 @@ const PROFILE_DEFINITIONS: Array<{
   },
 ];
 
-// Helper to filter English voices strictly matching dialect & gender
+// Helper to filter English voices strictly matching dialect & gender without guessing
 function resolveVoiceForProfile(
   profile: (typeof PROFILE_DEFINITIONS)[number],
   allVoices: SpeechSynthesisVoice[]
-): { voice: SpeechSynthesisVoice | null; displayName: string; isFallback: boolean } {
+): { voice: SpeechSynthesisVoice | null; displayName: string; isAvailable: boolean } {
   // 1. Strict English filter: Never ever permit Japanese, Chinese, Vietnamese etc.
   const englishVoices = allVoices.filter((v) => {
     const lang = (v.lang || "").toLowerCase().replace("_", "-");
@@ -175,8 +183,8 @@ function resolveVoiceForProfile(
   if (englishVoices.length === 0) {
     return {
       voice: null,
-      displayName: `${profile.region} (System Engine)`,
-      isFallback: true,
+      displayName: "Chưa hỗ trợ trên thiết bị này",
+      isAvailable: false,
     };
   }
 
@@ -216,7 +224,7 @@ function resolveVoiceForProfile(
     return false;
   });
 
-  // 3. Search within matching regional voices using specific preferred names
+  // 3. Search within matching regional voices
   if (regionalVoices.length > 0) {
     // 3a. Natural / Neural / Online with specific name keyword
     for (const kw of profile.preferredKeywords) {
@@ -230,23 +238,23 @@ function resolveVoiceForProfile(
           n.includes("google");
         return isNatural && n.includes(kw);
       });
-      if (found) return { voice: found, displayName: found.name, isFallback: false };
+      if (found) return { voice: found, displayName: found.name, isAvailable: true };
     }
 
     // 3b. Any voice in region with specific name keyword
     for (const kw of profile.preferredKeywords) {
       const found = regionalVoices.find((v) => v.name.toLowerCase().includes(kw));
-      if (found) return { voice: found, displayName: found.name, isFallback: false };
+      if (found) return { voice: found, displayName: found.name, isAvailable: true };
     }
 
-    // 3c. Filter by gender keyword in voice name if present
+    // 3c. Filter by gender keyword in voice name
     const genderVoice = regionalVoices.find((v) => {
       const n = v.name.toLowerCase();
       return profile.gender === "female"
-        ? n.includes("female") || n.includes("woman") || n.includes("zira") || n.includes("jenny")
-        : n.includes("male") || n.includes("man") || n.includes("david") || n.includes("guy");
+        ? n.includes("female") || n.includes("woman") || n.includes("zira") || n.includes("jenny") || n.includes("sonia")
+        : n.includes("male") || n.includes("man") || n.includes("david") || n.includes("guy") || n.includes("ryan") || n.includes("george");
     });
-    if (genderVoice) return { voice: genderVoice, displayName: genderVoice.name, isFallback: false };
+    if (genderVoice) return { voice: genderVoice, displayName: genderVoice.name, isAvailable: true };
 
     // 3d. Any natural voice in region
     const naturalInRegion = regionalVoices.find((v) => {
@@ -259,50 +267,17 @@ function resolveVoiceForProfile(
         n.includes("google")
       );
     });
-    if (naturalInRegion) return { voice: naturalInRegion, displayName: naturalInRegion.name, isFallback: false };
+    if (naturalInRegion) return { voice: naturalInRegion, displayName: naturalInRegion.name, isAvailable: true };
 
     // 3e. First available regional voice
-    return { voice: regionalVoices[0], displayName: regionalVoices[0].name, isFallback: false };
+    return { voice: regionalVoices[0], displayName: regionalVoices[0].name, isAvailable: true };
   }
 
-  // 4. Intelligent English Fallback for browsers without native Australian / specific packages (e.g. Chrome on Windows):
-  // Instead of failing or staying silent, select the best matching English voice and apply acoustic tuning
-  let fallbackVoice: SpeechSynthesisVoice | null = null;
-
-  if (profile.gender === "male") {
-    // Look for any English male voice (David, Mark, Guy, George, Ryan, Google UK English Male)
-    fallbackVoice =
-      englishVoices.find((v) => {
-        const n = v.name.toLowerCase();
-        return (
-          n.includes("david") ||
-          n.includes("mark") ||
-          n.includes("guy") ||
-          n.includes("george") ||
-          n.includes("ryan") ||
-          n.includes("male")
-        );
-      }) || englishVoices[0];
-  } else {
-    // Look for any English female voice (Zira, Jenny, Sonia, Samantha, Google US English, Google UK English Female)
-    fallbackVoice =
-      englishVoices.find((v) => {
-        const n = v.name.toLowerCase();
-        return (
-          n.includes("zira") ||
-          n.includes("jenny") ||
-          n.includes("sonia") ||
-          n.includes("samantha") ||
-          n.includes("female")
-        );
-      }) || englishVoices[0];
-  }
-
-  const cleanFallbackName = fallbackVoice?.name || "System Voice";
+  // 4. If region is NOT installed in browser/OS, return unavailable (Do NOT guess / Do NOT play mismatched US voice)
   return {
-    voice: fallbackVoice,
-    displayName: `${cleanFallbackName} (${profile.gender === "female" ? "Nữ" : "Nam"})`,
-    isFallback: true,
+    voice: null,
+    displayName: "Chưa hỗ trợ trên thiết bị này",
+    isAvailable: false,
   };
 }
 
@@ -312,6 +287,13 @@ export function useSpeech() {
   const [voiceProfiles, setVoiceProfiles] = useState<VoiceProfile[]>([]);
   const [playing, setPlaying] = useState(false);
   const [activeElementIndex, setActiveElementIndex] = useState<number | null>(null);
+
+  // Modal state when a voice is not supported
+  const [unsupportedModal, setUnsupportedModal] = useState<UnsupportedVoiceState>({
+    isOpen: false,
+    profile: null,
+    availableProfiles: [],
+  });
 
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const highlightedRef = useRef<HTMLElement | null>(null);
@@ -327,7 +309,7 @@ export function useSpeech() {
       voicesRef.current = allVoices;
 
       const resolvedProfiles: VoiceProfile[] = PROFILE_DEFINITIONS.map((def) => {
-        const { displayName } = resolveVoiceForProfile(def, allVoices);
+        const { displayName, isAvailable } = resolveVoiceForProfile(def, allVoices);
         return {
           id: def.id,
           label: def.label,
@@ -336,22 +318,28 @@ export function useSpeech() {
           region: def.region,
           flag: def.flag,
           systemVoiceName: displayName,
+          isAvailable,
+          sampleGreeting: def.sampleGreeting,
         };
       });
 
       setVoiceProfiles(resolvedProfiles);
 
-      // Restore saved profile
+      // Restore saved profile or select first available
       const savedProfile = localStorage.getItem("selected_voice_profile") as ProfileId | null;
-      if (savedProfile && resolvedProfiles.some((p) => p.id === savedProfile)) {
+      if (savedProfile && resolvedProfiles.some((p) => p.id === savedProfile && p.isAvailable)) {
         setSelectedProfileId(savedProfile);
+      } else {
+        const firstAvailable = resolvedProfiles.find((p) => p.isAvailable);
+        if (firstAvailable) {
+          setSelectedProfileId(firstAvailable.id);
+        }
       }
     };
 
     populateVoices();
     window.speechSynthesis.onvoiceschanged = populateVoices;
 
-    // Retry pollers to handle browser async voice loading in Chromium/Edge
     const timer1 = setTimeout(populateVoices, 200);
     const timer2 = setTimeout(populateVoices, 800);
     const timer3 = setTimeout(populateVoices, 2000);
@@ -366,12 +354,37 @@ export function useSpeech() {
     };
   }, []);
 
-  const changeProfile = useCallback((profileId: ProfileId) => {
-    setSelectedProfileId(profileId);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("selected_voice_profile", profileId);
-    }
+  const openUnsupportedModal = useCallback(
+    (profile: VoiceProfile) => {
+      const available = voiceProfiles.filter((p) => p.isAvailable);
+      setUnsupportedModal({
+        isOpen: true,
+        profile,
+        availableProfiles: available,
+      });
+    },
+    [voiceProfiles]
+  );
+
+  const closeUnsupportedModal = useCallback(() => {
+    setUnsupportedModal((prev) => ({ ...prev, isOpen: false }));
   }, []);
+
+  const changeProfile = useCallback(
+    (profileId: ProfileId) => {
+      const targetProfile = voiceProfiles.find((p) => p.id === profileId);
+      if (targetProfile && !targetProfile.isAvailable) {
+        openUnsupportedModal(targetProfile);
+        return;
+      }
+
+      setSelectedProfileId(profileId);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("selected_voice_profile", profileId);
+      }
+    },
+    [voiceProfiles, openUnsupportedModal]
+  );
 
   const clearHighlight = useCallback(() => {
     if (highlightedRef.current) {
@@ -400,23 +413,40 @@ export function useSpeech() {
       .trim();
   };
 
-  // Get current active SpeechSynthesisVoice object & acoustic metadata
+  // Get current active SpeechSynthesisVoice object & metadata
   const getActiveVoiceInfo = useCallback(() => {
     const currentDef = PROFILE_DEFINITIONS.find((p) => p.id === selectedProfileId);
-    if (!currentDef) return { voice: null, def: PROFILE_DEFINITIONS[0] };
-    const { voice } = resolveVoiceForProfile(currentDef, voicesRef.current);
-    return { voice, def: currentDef };
+    if (!currentDef) return { voice: null, def: PROFILE_DEFINITIONS[0], isAvailable: false };
+    const { voice, isAvailable } = resolveVoiceForProfile(currentDef, voicesRef.current);
+    return { voice, def: currentDef, isAvailable };
   }, [selectedProfileId]);
 
   // Sequential speaker to prevent browser drop bugs
   const speak = useCallback(
     (items: Array<{ element: HTMLElement; text: string }>) => {
       if (typeof window === "undefined" || !window.speechSynthesis) {
-        alert("Read-aloud is not supported in this browser. Try Google Chrome, Microsoft Edge, or Apple Safari.");
+        alert("Tính năng đọc phát âm không được hỗ trợ trên trình duyệt này. Vui lòng thử Google Chrome, Microsoft Edge hoặc Safari.");
         return;
       }
 
-      // Resume SpeechSynthesis context if suspended
+      const { voice: activeVoice, def: currentDef, isAvailable } = getActiveVoiceInfo();
+
+      if (!isAvailable || !activeVoice) {
+        const currentProfile = voiceProfiles.find((p) => p.id === selectedProfileId) || {
+          id: currentDef.id,
+          label: currentDef.label,
+          accent: currentDef.accent,
+          gender: currentDef.gender,
+          region: currentDef.region,
+          flag: currentDef.flag,
+          systemVoiceName: "Chưa hỗ trợ",
+          isAvailable: false,
+          sampleGreeting: currentDef.sampleGreeting,
+        };
+        openUnsupportedModal(currentProfile);
+        return;
+      }
+
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
       }
@@ -426,11 +456,8 @@ export function useSpeech() {
       isCancelledRef.current = false;
       setPlaying(true);
 
-      const { voice: activeVoice, def: currentDef } = getActiveVoiceInfo();
       const isFemale = currentDef.gender === "female";
-
-      // Acoustic pitch mapping: distinct resonance for male vs female
-      const pitch = isFemale ? 1.08 : 0.88;
+      const pitch = isFemale ? 1.05 : 0.95;
 
       let currentIndex = 0;
 
@@ -453,11 +480,8 @@ export function useSpeech() {
         const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.rate = speed;
         utterance.pitch = pitch;
-        utterance.lang = activeVoice?.lang || currentDef.accent;
-
-        if (activeVoice && activeVoice.lang.toLowerCase().startsWith("en")) {
-          utterance.voice = activeVoice;
-        }
+        utterance.lang = activeVoice.lang;
+        utterance.voice = activeVoice;
 
         utterance.onstart = () => {
           if (isCancelledRef.current) return;
@@ -488,36 +512,49 @@ export function useSpeech() {
 
       speakNext();
     },
-    [speed, getActiveVoiceInfo, clearHighlight]
+    [speed, selectedProfileId, voiceProfiles, getActiveVoiceInfo, clearHighlight, openUnsupportedModal]
   );
 
-  // Test voice sample with natural accent greeting
+  // Test voice sample
   const testVoice = useCallback(
     (profileId?: ProfileId) => {
       if (typeof window === "undefined" || !window.speechSynthesis) return;
+
+      const targetId = profileId || selectedProfileId;
+      const currentDef = PROFILE_DEFINITIONS.find((p) => p.id === targetId) || PROFILE_DEFINITIONS[0];
+      const { voice, isAvailable } = resolveVoiceForProfile(currentDef, voicesRef.current);
+
+      if (!isAvailable || !voice) {
+        const targetProfile = voiceProfiles.find((p) => p.id === targetId) || {
+          id: currentDef.id,
+          label: currentDef.label,
+          accent: currentDef.accent,
+          gender: currentDef.gender,
+          region: currentDef.region,
+          flag: currentDef.flag,
+          systemVoiceName: "Chưa hỗ trợ",
+          isAvailable: false,
+          sampleGreeting: currentDef.sampleGreeting,
+        };
+        openUnsupportedModal(targetProfile);
+        return;
+      }
 
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
       }
       window.speechSynthesis.cancel();
 
-      const targetId = profileId || selectedProfileId;
-      const currentDef = PROFILE_DEFINITIONS.find((p) => p.id === targetId) || PROFILE_DEFINITIONS[0];
-      const { voice } = resolveVoiceForProfile(currentDef, voicesRef.current);
       const isFemale = currentDef.gender === "female";
-
       const utterance = new SpeechSynthesisUtterance(currentDef.sampleGreeting);
       utterance.rate = speed;
-      utterance.pitch = isFemale ? 1.08 : 0.88;
-      utterance.lang = voice?.lang || currentDef.accent;
-
-      if (voice && voice.lang.toLowerCase().startsWith("en")) {
-        utterance.voice = voice;
-      }
+      utterance.pitch = isFemale ? 1.05 : 0.95;
+      utterance.lang = voice.lang;
+      utterance.voice = voice;
 
       window.speechSynthesis.speak(utterance);
     },
-    [selectedProfileId, speed]
+    [selectedProfileId, speed, voiceProfiles, openUnsupportedModal]
   );
 
   const currentProfile = voiceProfiles.find((p) => p.id === selectedProfileId);
@@ -534,5 +571,8 @@ export function useSpeech() {
     speak,
     stop,
     testVoice,
+    unsupportedModal,
+    closeUnsupportedModal,
+    openUnsupportedModal,
   };
 }
