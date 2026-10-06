@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS public.practice_sessions (
     role TEXT CHECK (role IN ('speaker', 'listener', 'solo', 'pair')),
     duration_seconds INT DEFAULT 120,
     collocations_heard_count INT DEFAULT 0,
+    audio_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -63,6 +64,7 @@ ALTER TABLE public.practice_sessions ADD COLUMN IF NOT EXISTS student_nickname T
 ALTER TABLE public.practice_sessions ADD COLUMN IF NOT EXISTS role TEXT;
 ALTER TABLE public.practice_sessions ADD COLUMN IF NOT EXISTS duration_seconds INT DEFAULT 120;
 ALTER TABLE public.practice_sessions ADD COLUMN IF NOT EXISTS collocations_heard_count INT DEFAULT 0;
+ALTER TABLE public.practice_sessions ADD COLUMN IF NOT EXISTS audio_url TEXT;
 
 -- 5. Indexes for query performance
 CREATE INDEX IF NOT EXISTS idx_practice_sessions_student_id ON public.practice_sessions(student_id);
@@ -121,6 +123,29 @@ CREATE POLICY "Teacher view practice" ON public.practice_sessions
   USING (true);
 
 -- ==============================================================================
--- 8. Seed Default Teacher Accounts (Helper for Initial Setup)
+-- 8. Supabase Storage Bucket Setup (Audio 96kbps ~1.4MB/recording)
 -- ==============================================================================
--- Note: Replace password hash with your desired Supabase Auth credentials or create via Dashboard
+-- Automatically created via API or can be initialized manually with SQL:
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'practice-recordings',
+  'practice-recordings',
+  true,
+  15728640, -- 15MB limit per audio file
+  ARRAY['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/aac', 'audio/x-m4a']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = true,
+  file_size_limit = 15728640,
+  allowed_mime_types = ARRAY['audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/aac', 'audio/x-m4a'];
+
+-- Storage bucket RLS policies
+DROP POLICY IF EXISTS "Public Access Audio" ON storage.objects;
+CREATE POLICY "Public Access Audio" ON storage.objects
+  FOR SELECT
+  USING (bucket_id = 'practice-recordings');
+
+DROP POLICY IF EXISTS "Public Upload Audio" ON storage.objects;
+CREATE POLICY "Public Upload Audio" ON storage.objects
+  FOR INSERT
+  WITH CHECK (bucket_id = 'practice-recordings');

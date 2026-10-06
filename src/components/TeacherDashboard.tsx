@@ -24,6 +24,9 @@ import {
   UserPlus,
   GraduationCap,
   Filter,
+  FileAudio,
+  Volume2,
+  Download,
 } from "lucide-react";
 
 function generateCopySlug(slug: string) {
@@ -740,6 +743,7 @@ export function TeacherDashboard({
                   <th className="p-3.5">Chủ Đề</th>
                   <th className="p-3.5">Hình Thức</th>
                   <th className="p-3.5">Collocations Đã Nói</th>
+                  <th className="p-3.5">Bản Ghi Âm (96kbps)</th>
                   <th className="p-3.5">Thời Gian</th>
                 </tr>
               </thead>
@@ -763,11 +767,35 @@ export function TeacherDashboard({
                     </td>
                     <td className="p-3.5">
                       <span className="capitalize px-2.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-medium text-xs text-slate-700">
-                        {log.role === "pair" ? "Theo cặp" : "Cá nhân"}
+                        {log.role === "pair" ? "Theo cặp" : log.role === "listener" ? "Người nghe" : "Cá nhân (Speaker)"}
                       </span>
                     </td>
                     <td className="p-3.5 font-bold text-indigo-600">
                       {log.collocations_heard_count} cụm từ
+                    </td>
+                    <td className="p-3.5">
+                      {log.audio_url ? (
+                        <div className="flex items-center gap-2">
+                          <audio
+                            src={log.audio_url}
+                            controls
+                            className="h-8 max-w-[180px] rounded-lg"
+                            preload="none"
+                          />
+                          <a
+                            href={log.audio_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-colors"
+                            title="Tải audio 96kbps"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">Chưa có audio</span>
+                      )}
                     </td>
                     <td className="p-3.5 text-slate-500 text-xs">
                       <div className="flex items-center gap-1.5">

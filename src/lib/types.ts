@@ -51,9 +51,10 @@ export interface PracticeSession {
   student_id?: string | null;
   student_nickname: string;
   class_name?: string | null;
-  role: "solo" | "pair";
+  role: "speaker" | "listener" | "solo" | "pair";
   duration_seconds: number;
   collocations_heard_count: number;
+  audio_url?: string | null;
   created_at: string;
   topics?: {
     title: string;

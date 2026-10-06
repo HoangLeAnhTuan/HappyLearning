@@ -16,7 +16,7 @@ function getAdminClient() {
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// GET /api/practice - Get recent practice logs (Teacher Only)
+// GET /api/practice - Get recent practice logs with Audio URL (Teacher Only)
 export async function GET() {
   // Instruction 2: Route authorization check
   const { unauthorizedResponse } = await verifyTeacherSession();
@@ -35,6 +35,7 @@ export async function GET() {
         role,
         duration_seconds,
         collocations_heard_count,
+        audio_url,
         created_at,
         topics (
           title,
@@ -55,7 +56,7 @@ export async function GET() {
   }
 }
 
-// POST /api/practice - Log a new practice session
+// POST /api/practice - Log a new practice session with Supabase Storage Audio URL
 export async function POST(req: NextRequest) {
   try {
     const supabase = getAdminClient();
@@ -96,13 +97,17 @@ export async function POST(req: NextRequest) {
     }
 
     const rawRole = typeof body?.role === "string" ? body.role : "speaker";
-    const role = ["speaker", "listener", "solo"].includes(rawRole) ? rawRole : "speaker";
+    const role = ["speaker", "listener", "solo", "pair"].includes(rawRole) ? rawRole : "speaker";
 
     const rawDuration = typeof body?.duration_seconds === "number" ? body.duration_seconds : 120;
     const duration_seconds = Math.max(1, Math.min(7200, Math.round(rawDuration))); // Clamped 1s to 2 hours
 
     const rawColloc = typeof body?.collocations_heard_count === "number" ? body.collocations_heard_count : 0;
     const collocations_heard_count = Math.max(0, Math.min(100, Math.round(rawColloc)));
+
+    const audio_url = typeof body?.audio_url === "string" && body.audio_url.startsWith("http")
+      ? body.audio_url.slice(0, 1000)
+      : null;
 
     // Construct clean payload
     const insertPayload: Record<string, unknown> = {
@@ -119,6 +124,9 @@ export async function POST(req: NextRequest) {
     }
     if (verifiedClassName) {
       insertPayload.class_name = verifiedClassName;
+    }
+    if (audio_url) {
+      insertPayload.audio_url = audio_url;
     }
 
     const { data, error } = await supabase

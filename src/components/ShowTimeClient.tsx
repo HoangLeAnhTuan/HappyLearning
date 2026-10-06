@@ -27,6 +27,7 @@ import {
   Wand2,
   FileText,
   Clock,
+  Loader2,
 } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 import type { Topic } from "@/lib/types";
@@ -485,6 +486,8 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
   const [speakerRecordedSeconds, setSpeakerRecordedSeconds] = useState(0);
   const [speakerAudioUrl, setSpeakerAudioUrl] = useState<string | null>(null);
   const [speakerMimeType, setSpeakerMimeType] = useState<string>("audio/webm");
+  const [speakerUploadStatus, setSpeakerUploadStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
+  const [speakerRemoteAudioUrl, setSpeakerRemoteAudioUrl] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -538,9 +541,9 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
     }
   }, []);
 
-  // Log session to DB
+  // Log session to DB (with optional 96kbps Supabase Storage Audio URL)
   const logSession = useCallback(
-    async (spentDuration?: number) => {
+    async (spentDuration?: number, audioUrl?: string | null) => {
       if (sessionLogged) return;
       setSessionLogged(true);
       try {
@@ -561,6 +564,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
             role,
             duration_seconds: Math.max(1, finalDuration),
             collocations_heard_count: heardSet.size,
+            audio_url: audioUrl || speakerRemoteAudioUrl || null,
           }),
         });
       } catch {
@@ -576,7 +580,52 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
       audioDuration,
       heardSet.size,
       studentInfo,
+      speakerRemoteAudioUrl,
     ]
+  );
+
+  // Upload 96kbps recording to Supabase Storage
+  const uploadRecordedAudio = useCallback(
+    async (blob: Blob, durationSec: number) => {
+      setSpeakerUploadStatus("uploading");
+      try {
+        const formData = new FormData();
+        const ext = speakerMimeType.includes("mp4")
+          ? "m4a"
+          : speakerMimeType.includes("ogg")
+          ? "ogg"
+          : speakerMimeType.includes("wav")
+          ? "wav"
+          : "webm";
+        formData.append("audio", blob, `${topic.slug || "speaking"}_96k.${ext}`);
+        formData.append("slug", topic.slug || "speaking");
+
+        const res = await fetch("/api/practice/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Không thể tải lên Supabase Storage");
+        }
+
+        const data = await res.json();
+        if (data.audio_url) {
+          setSpeakerRemoteAudioUrl(data.audio_url);
+          setSpeakerUploadStatus("success");
+          await logSession(durationSec, data.audio_url);
+        } else {
+          setSpeakerUploadStatus("error");
+          await logSession(durationSec);
+        }
+      } catch (err: unknown) {
+        console.error("Audio upload error:", err);
+        setSpeakerUploadStatus("error");
+        await logSession(durationSec);
+      }
+    },
+    [speakerMimeType, topic.slug, logSession]
   );
 
   // ── Speaker Mode Logic ───────────────────────────────────────────────────
@@ -611,10 +660,20 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
       audioStreamRef.current = stream;
 
       const mimeType = getSupportedMimeType();
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
-      if (mimeType) setSpeakerMimeType(mimeType);
+      const recorderOptions: MediaRecorderOptions = {
+        audioBitsPerSecond: 96000, // 96 kbps High-Quality voice encoding
+      };
+      if (mimeType) {
+        recorderOptions.mimeType = mimeType;
+        setSpeakerMimeType(mimeType);
+      }
+
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(stream, recorderOptions);
+      } catch {
+        recorder = new MediaRecorder(stream);
+      }
 
       audioChunksRef.current = [];
 
@@ -637,12 +696,16 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
           audioStreamRef.current.getTracks().forEach((t) => t.stop());
           audioStreamRef.current = null;
         }
+
+        // Auto upload 96kbps audio recording to Supabase Storage
+        uploadRecordedAudio(blob, Math.max(1, SPEAKER_DURATION - speakerTimeLeft));
       };
 
       recorder.start(1000);
       mediaRecorderRef.current = recorder;
       setSpeakerRecordState("recording");
       setSpeakerRecordedSeconds(0);
+      setSpeakerUploadStatus("idle");
 
       speakerRecIntervalRef.current = setInterval(() => {
         setSpeakerRecordedSeconds((s) => s + 1);
@@ -654,7 +717,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
       alert(`Could not start microphone: ${errorMsg}. Please allow microphone permission.`);
       return false;
     }
-  }, [speakerAudioUrl]);
+  }, [speakerAudioUrl, uploadRecordedAudio, speakerTimeLeft]);
 
   const startSpeakerTimer = useCallback(() => {
     if (speakerRunning) return;
@@ -728,6 +791,7 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
     stopSpeakerRecording();
     setSpeakerRunning(false);
     setSpeakerTimeLeft(SPEAKER_DURATION);
+    setSpeakerUploadStatus("idle");
     confettiFiredRef.current = false;
   }, [stopSpeakerRecording]);
 
@@ -1042,12 +1106,32 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                     <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
                       <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                     </div>
-                    <span>Bản Ghi Âm Luyện Nói Của Bạn</span>
+                    <span>Bản Ghi Âm Luyện Nói Của Bạn (Chuẩn 96 kbps)</span>
                   </div>
-                  <span className="text-sm font-mono font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-                    Thời lượng: {Math.floor(speakerRecordedSeconds / 60)}:
-                    {String(speakerRecordedSeconds % 60).padStart(2, "0")}
-                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {speakerUploadStatus === "uploading" && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-full animate-pulse">
+                        <Loader2 className="w-3 h-3 animate-spin text-indigo-600" />
+                        Đang lưu lên Supabase Storage...
+                      </span>
+                    )}
+                    {speakerUploadStatus === "success" && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        Đã đồng bộ lên hệ thống giáo viên
+                      </span>
+                    )}
+                    {speakerUploadStatus === "error" && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
+                        <Info className="w-3 h-3 text-amber-600" />
+                        Lưu trữ cục bộ trên máy
+                      </span>
+                    )}
+                    <span className="text-sm font-mono font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                      Thời lượng: {Math.floor(speakerRecordedSeconds / 60)}:
+                      {String(speakerRecordedSeconds % 60).padStart(2, "0")}
+                    </span>
+                  </div>
                 </div>
 
                 <audio src={speakerAudioUrl} controls className="w-full h-11 rounded-xl" />
@@ -1058,6 +1142,8 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                     onClick={() => {
                       if (speakerAudioUrl) URL.revokeObjectURL(speakerAudioUrl);
                       setSpeakerAudioUrl(null);
+                      setSpeakerRemoteAudioUrl(null);
+                      setSpeakerUploadStatus("idle");
                       setSpeakerRecordState("idle");
                       setSpeakerRecordedSeconds(0);
                     }}
@@ -1078,12 +1164,12 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                         : "webm";
                       const a = document.createElement("a");
                       a.href = speakerAudioUrl;
-                      a.download = `${topic.slug || "speaking"}-practice.${ext}`;
+                      a.download = `${topic.slug || "speaking"}-96kbps.${ext}`;
                       a.click();
                     }}
                     className="text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-sm cursor-pointer active:scale-95"
                   >
-                    <Download className="w-4 h-4" /> Tải File Audio Về Máy
+                    <Download className="w-4 h-4" /> Tải File Audio (96kbps) Về Máy
                   </button>
                 </div>
               </div>
