@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Topic, Student, PracticeSession } from "@/lib/types";
 import { TopicEditor } from "@/components/TopicEditor";
+import { AudioPlayerModal } from "@/components/AudioPlayerModal";
 import {
   BookOpen,
   Mic,
@@ -29,6 +30,7 @@ import {
   Download,
   RefreshCw,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 
 function generateCopySlug(slug: string) {
@@ -73,7 +75,9 @@ export function TeacherDashboard({
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   // Practice Logs State
-  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
+  const [selectedAudioLog, setSelectedAudioLog] = useState<PracticeSession | null>(null);
+  const [logPendingDelete, setLogPendingDelete] = useState<PracticeSession | null>(null);
+  const [isDeletingLog, setIsDeletingLog] = useState(false);
   const [isRefreshingLogs, setIsRefreshingLogs] = useState(false);
 
   // Fetch functions
@@ -110,22 +114,16 @@ export function TeacherDashboard({
     }
   };
 
-  const handleDeleteLog = async (log: PracticeSession) => {
-    const studentLabel = log.student_nickname || "học viên";
-    if (
-      !window.confirm(
-        `Bạn có chắc chắn muốn xóa bản ghi âm / lượt luyện tập của "${studentLabel}" không?\n(Hành động này sẽ xóa vĩnh viễn cả file âm thanh trên Supabase Storage)`
-      )
-    ) {
-      return;
-    }
+  const handleConfirmDelete = async () => {
+    if (!logPendingDelete) return;
 
-    setDeletingLogId(log.id);
+    const targetLog = logPendingDelete;
+    setIsDeletingLog(true);
     try {
       const params = new URLSearchParams();
-      if (log.id) params.set("id", log.id);
-      if (log.storage_path) params.set("storage_path", log.storage_path);
-      if (log.audio_url) params.set("audio_url", log.audio_url);
+      if (targetLog.id) params.set("id", targetLog.id);
+      if (targetLog.storage_path) params.set("storage_path", targetLog.storage_path);
+      if (targetLog.audio_url) params.set("audio_url", targetLog.audio_url);
 
       const res = await fetch(`/api/practice?${params.toString()}`, {
         method: "DELETE",
@@ -134,11 +132,12 @@ export function TeacherDashboard({
       if (!res.ok) {
         throw new Error(data.error || "Không thể xóa lượt luyện tập");
       }
-      setPracticeLogs((prev) => prev.filter((l) => l.id !== log.id));
+      setPracticeLogs((prev) => prev.filter((l) => l.id !== targetLog.id));
+      setLogPendingDelete(null);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Xóa thất bại");
     } finally {
-      setDeletingLogId(null);
+      setIsDeletingLog(false);
     }
   };
 
@@ -781,7 +780,7 @@ export function TeacherDashboard({
                 <FileAudio className="w-5 h-5 text-indigo-600" /> Nhật Ký &amp; Bản Ghi Âm Luyện Nói
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                Nghe lại bài nói, tải file 96kbps về máy và quản lý các bài luyện tập đã lưu trên Supabase Storage.
+                Nghe lại bài nói với trình phát thông minh (tua ±5s/±10s, chỉnh tốc độ, âm lượng) và quản lý lưu trữ.
               </p>
             </div>
             <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -805,96 +804,93 @@ export function TeacherDashboard({
             <table className="w-full text-left border-collapse text-xs sm:text-sm font-sans">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
-                  <th className="p-3.5">Học Sinh</th>
-                  <th className="p-3.5">Lớp</th>
+                  <th className="p-3.5 whitespace-nowrap">Học Sinh</th>
+                  <th className="p-3.5 whitespace-nowrap">Lớp</th>
                   <th className="p-3.5">Chủ Đề</th>
-                  <th className="p-3.5">Hình Thức</th>
-                  <th className="p-3.5">Collocations Đã Nói</th>
-                  <th className="p-3.5">Bản Ghi Âm (96kbps)</th>
-                  <th className="p-3.5">Thời Gian</th>
-                  <th className="p-3.5 text-right">Thao Tác</th>
+                  <th className="p-3.5 whitespace-nowrap">Hình Thức</th>
+                  <th className="p-3.5 whitespace-nowrap">Collocations</th>
+                  <th className="p-3.5 whitespace-nowrap">Bản Ghi Âm</th>
+                  <th className="p-3.5 whitespace-nowrap">Thời Gian</th>
+                  <th className="p-3.5 text-right whitespace-nowrap">Thao Tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {practiceLogs.map((log) => {
-                  const isDeleting = deletingLogId === log.id;
-                  return (
-                    <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-3.5 font-bold text-slate-800">
-                        {log.student_nickname || "Khách (Anonymous)"}
-                      </td>
-                      <td className="p-3.5">
-                        {log.class_name ? (
-                          <span className="px-2 py-0.5 rounded bg-slate-100 font-semibold text-xs text-slate-700">
-                            {log.class_name}
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-xs">-</span>
-                        )}
-                      </td>
-                      <td className="p-3.5 text-slate-700 font-medium">
-                        {log.topics?.title || "Speaking Practice"}
-                      </td>
-                      <td className="p-3.5">
-                        <span className="capitalize px-2.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-medium text-xs text-slate-700">
-                          {log.role === "pair"
-                            ? "Theo cặp"
-                            : log.role === "listener"
-                            ? "Người nghe"
-                            : "Cá nhân (Speaker)"}
+                {practiceLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-3.5 font-bold text-slate-800 whitespace-nowrap">
+                      {log.student_nickname || "Khách (Anonymous)"}
+                    </td>
+                    <td className="p-3.5 whitespace-nowrap">
+                      {log.class_name ? (
+                        <span className="px-2 py-0.5 rounded bg-slate-100 font-semibold text-xs text-slate-700">
+                          {log.class_name}
                         </span>
-                      </td>
-                      <td className="p-3.5 font-bold text-indigo-600">
-                        {log.collocations_heard_count} cụm từ
-                      </td>
-                      <td className="p-3.5">
-                        {log.audio_url ? (
-                          <div className="flex items-center gap-2">
-                            <audio
-                              src={log.audio_url}
-                              controls
-                              className="h-8 max-w-[190px] rounded-lg"
-                              preload="none"
-                            />
-                            <a
-                              href={log.audio_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              download
-                              className="p-1.5 rounded-lg text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-colors"
-                              title="Tải audio 96kbps về máy"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </a>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400 italic">Chưa có audio</span>
-                        )}
-                      </td>
-                      <td className="p-3.5 text-slate-500 text-xs whitespace-nowrap">
+                      ) : (
+                        <span className="text-slate-400 text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="p-3.5 text-slate-700 font-medium min-w-[180px] max-w-[280px]">
+                      <span className="line-clamp-2" title={log.topics?.title || "Speaking Practice"}>
+                        {log.topics?.title || "Speaking Practice"}
+                      </span>
+                    </td>
+                    <td className="p-3.5 whitespace-nowrap">
+                      <span className="capitalize px-2.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-medium text-xs text-slate-700">
+                        {log.role === "pair"
+                          ? "Theo cặp"
+                          : log.role === "listener"
+                          ? "Người nghe"
+                          : "Cá nhân (Speaker)"}
+                      </span>
+                    </td>
+                    <td className="p-3.5 font-bold text-indigo-600 whitespace-nowrap">
+                      {log.collocations_heard_count} cụm từ
+                    </td>
+                    <td className="p-3.5 whitespace-nowrap">
+                      {log.audio_url ? (
                         <div className="flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          {new Date(log.created_at).toLocaleString()}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAudioLog(log)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
+                            title="Mở trình phát nghe bài nói"
+                          >
+                            <Volume2 className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>Nghe bài nói</span>
+                          </button>
+                          <a
+                            href={log.audio_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download
+                            className="p-1.5 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-colors"
+                            title="Tải audio về máy"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
                         </div>
-                      </td>
-                      <td className="p-3.5 text-right">
-                        <button
-                          type="button"
-                          disabled={isDeleting}
-                          onClick={() => handleDeleteLog(log)}
-                          className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all cursor-pointer inline-flex items-center gap-1 text-xs disabled:opacity-50"
-                          title="Xóa bản ghi âm và nhật ký này"
-                        >
-                          {isDeleting ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">Không có audio</span>
+                      )}
+                    </td>
+                    <td className="p-3.5 text-slate-500 text-xs whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        {new Date(log.created_at).toLocaleString()}
+                      </div>
+                    </td>
+                    <td className="p-3.5 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => setLogPendingDelete(log)}
+                        className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all cursor-pointer inline-flex items-center gap-1 text-xs"
+                        title="Xóa bản ghi âm này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
 
@@ -903,6 +899,98 @@ export function TeacherDashboard({
                 Chưa có phiên luyện tập nào được ghi nhận. Khi học sinh luyện nói trên Show Time, dữ liệu sẽ tự động hiển thị tại đây.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── POPUP: Audio Player Modal ──────────────────────────────────────── */}
+      {selectedAudioLog && (
+        <AudioPlayerModal
+          log={selectedAudioLog}
+          onClose={() => setSelectedAudioLog(null)}
+        />
+      )}
+
+      {/* ── POPUP: Custom Delete Confirmation Modal ───────────────────────── */}
+      {logPendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div
+            className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center shadow-xs">
+                <Trash2 className="w-6 h-6 stroke-[2.2]" />
+              </div>
+
+              <div>
+                <h3 className="font-bold text-slate-900 text-lg font-heading">
+                  Xác nhận xóa bản ghi âm?
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                  Bản ghi âm và nhật ký luyện tập này sẽ bị xóa vĩnh viễn khỏi cơ sở dữ liệu và Supabase Storage. Thao tác này không thể hoàn tác.
+                </p>
+              </div>
+
+              {/* Log Details */}
+              <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Học sinh:</span>
+                  <span className="font-bold text-slate-800">
+                    {logPendingDelete.student_nickname || "Học viên"}
+                  </span>
+                </div>
+                {logPendingDelete.class_name && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">Lớp:</span>
+                    <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                      {logPendingDelete.class_name}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Chủ đề:</span>
+                  <span className="font-semibold text-slate-700 truncate max-w-[200px]">
+                    {logPendingDelete.topics?.title || "Speaking Practice"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Thời gian:</span>
+                  <span className="text-slate-600">
+                    {new Date(logPendingDelete.created_at).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isDeletingLog}
+                onClick={() => setLogPendingDelete(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingLog}
+                onClick={handleConfirmDelete}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-60 active:scale-95"
+              >
+                {isDeletingLog ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang xóa...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xác nhận xóa</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

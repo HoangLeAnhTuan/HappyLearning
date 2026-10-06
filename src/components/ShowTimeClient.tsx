@@ -1177,12 +1177,12 @@ export function ShowTimeClient({ topic }: { topic: Topic }) {
                         : "webm";
                       const a = document.createElement("a");
                       a.href = speakerAudioUrl;
-                      a.download = `${topic.slug || "speaking"}-96kbps.${ext}`;
+                      a.download = `${topic.slug || "speaking"}-recording.${ext}`;
                       a.click();
                     }}
                     className="text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-sm cursor-pointer active:scale-95"
                   >
-                    <Download className="w-4 h-4" /> Tải File Audio (96kbps) Về Máy
+                    <Download className="w-4 h-4" /> Tải File Ghi Âm Về Máy
                   </button>
                 </div>
               </div>

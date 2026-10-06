@@ -92,7 +92,6 @@ export async function fetchCombinedPracticeLogs(): Promise<PracticeSession[]> {
 
     const { data: topics } = await supabase.from("topics").select("id, title, slug");
     const topicMapBySlug = new Map((topics || []).map((t) => [t.slug, t]));
-    const topicMapById = new Map((topics || []).map((t) => [t.id, t]));
 
     const combined: PracticeSession[] = [];
     const matchedStoragePaths = new Set<string>();
@@ -105,12 +104,18 @@ export async function fetchCombinedPracticeLogs(): Promise<PracticeSession[]> {
       // Find matching storage file if audio_url not set
       if (!matchedAudioUrl && session.student_id) {
         const found = storageFiles.find(
-          (sf) => sf.studentId === session.student_id
+          (sf) => sf.studentId === session.student_id && !matchedStoragePaths.has(sf.filePath)
         );
         if (found) {
           matchedAudioUrl = found.audioUrl;
           storagePath = found.filePath;
           matchedStoragePaths.add(found.filePath);
+        }
+      } else if (matchedAudioUrl) {
+        const parts = matchedAudioUrl.split(`/${BUCKET_NAME}/`);
+        if (parts.length > 1) {
+          storagePath = parts[1];
+          matchedStoragePaths.add(storagePath);
         }
       }
 
@@ -121,7 +126,7 @@ export async function fetchCombinedPracticeLogs(): Promise<PracticeSession[]> {
       });
     }
 
-    // Synthesize unlinked storage files into practice logs
+    // Synthesize unlinked storage files into practice logs with 100% unique IDs
     for (const sf of storageFiles) {
       if (matchedStoragePaths.has(sf.filePath)) continue;
 
@@ -129,8 +134,11 @@ export async function fetchCombinedPracticeLogs(): Promise<PracticeSession[]> {
       const slugMatch = sf.fileName.split("_")[0];
       const topic = topicMapBySlug.get(slugMatch);
 
+      // Generate unique hex-encoded ID based on full path
+      const uniqueId = `storage_${Buffer.from(sf.filePath).toString("hex")}`;
+
       combined.push({
-        id: `storage_${Buffer.from(sf.filePath).toString("hex").slice(0, 32)}`,
+        id: uniqueId,
         topic_id: topic?.id || "unknown",
         student_id: sf.studentId,
         student_nickname: student?.name || "Học viên",
@@ -142,7 +150,7 @@ export async function fetchCombinedPracticeLogs(): Promise<PracticeSession[]> {
         storage_path: sf.filePath,
         created_at: sf.createdAt,
         topics: {
-          title: topic?.title || "Speaking Practice (Bản ghi âm)",
+          title: topic?.title || "Speaking Practice",
           slug: topic?.slug || slugMatch,
         },
       });
@@ -170,11 +178,22 @@ export async function deletePracticeLog(
     const UUID_REGEX =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-    // 1. Delete audio file from Supabase Storage if path is provided
+    // 1. Resolve storage file path to delete
     let fileToDelete = storagePath;
 
+    if (!fileToDelete && sessionId?.startsWith("storage_")) {
+      try {
+        const hex = sessionId.replace("storage_", "");
+        const decoded = Buffer.from(hex, "hex").toString("utf-8");
+        if (decoded.startsWith("recordings/")) {
+          fileToDelete = decoded;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     if (!fileToDelete && audioUrl) {
-      // Extract file path from audio URL
       const parts = audioUrl.split(`/${BUCKET_NAME}/`);
       if (parts.length > 1) {
         fileToDelete = parts[1];
@@ -182,30 +201,22 @@ export async function deletePracticeLog(
     }
 
     // If ID is a DB uuid, look up the record to find if there's an associated audio_url
-    if (UUID_REGEX.test(sessionId) && !fileToDelete) {
-      const { data: record } = await supabase
-        .from("practice_sessions")
-        .select("audio_url")
-        .eq("id", sessionId)
-        .single();
-      if (record?.audio_url) {
-        const parts = record.audio_url.split(`/${BUCKET_NAME}/`);
-        if (parts.length > 1) {
-          fileToDelete = parts[1];
+    if (UUID_REGEX.test(sessionId)) {
+      if (!fileToDelete) {
+        const { data: record } = await supabase
+          .from("practice_sessions")
+          .select("audio_url")
+          .eq("id", sessionId)
+          .single();
+        if (record?.audio_url) {
+          const parts = record.audio_url.split(`/${BUCKET_NAME}/`);
+          if (parts.length > 1) {
+            fileToDelete = parts[1];
+          }
         }
       }
-    }
 
-    if (fileToDelete) {
-      try {
-        await supabase.storage.from(BUCKET_NAME).remove([fileToDelete]);
-      } catch (err) {
-        console.warn("Storage deletion warning:", err);
-      }
-    }
-
-    // 2. Delete database record if it's a real DB UUID
-    if (UUID_REGEX.test(sessionId)) {
+      // Delete database record
       const { error: dbError } = await supabase
         .from("practice_sessions")
         .delete()
@@ -213,6 +224,20 @@ export async function deletePracticeLog(
 
       if (dbError) {
         return { success: false, error: dbError.message };
+      }
+    }
+
+    // 2. Delete audio file from Supabase Storage
+    if (fileToDelete) {
+      try {
+        const { error: storageError } = await supabase.storage
+          .from(BUCKET_NAME)
+          .remove([fileToDelete]);
+        if (storageError) {
+          console.warn("Storage deletion warning:", storageError);
+        }
+      } catch (err) {
+        console.warn("Storage deletion exception:", err);
       }
     }
 
