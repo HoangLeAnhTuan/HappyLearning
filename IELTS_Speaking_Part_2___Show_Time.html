@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>IELTS Speaking Part 2 – Show Time</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1f2340;--card:#fffdf8;--soft:#fff3d6;--bg:#dcf9ec;--k:#1fb87a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#f4f1ff;--card:#2a2850;--soft:#3a3768;--bg:#12332b}}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Nunito',system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+h1,h2,h3,button,.badge{font-family:'Baloo 2','Nunito',system-ui,sans-serif}
+.w{max-width:860px;margin:0 auto;padding:12px 16px 28px}
+.topic{display:inline-block;background:#1d3557;color:#ffd166;border-radius:99px;padding:2px 14px;font-size:13px;font-weight:700}
+.head{display:flex;align-items:center;gap:12px;margin:6px 0}
+.head svg{width:84px;height:84px;flex:none}
+h1{font-size:clamp(26px,5vw,40px);margin:0;color:var(--k)}
+.card{background:var(--card);border:3px solid var(--c,var(--k));border-radius:22px;padding:10px 16px;margin:12px 0 16px;box-shadow:0 5px 0 var(--c,var(--k))}
+.card h2{margin:0 0 6px;font-size:20px;color:var(--c,var(--k))}
+.roles{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.pill{border-radius:99px;padding:3px 16px;font:700 18px 'Baloo 2';color:#fff}
+.sp{background:#ff5d8f}.li{background:#2bb3ff}
+button{border:0;border-radius:99px;padding:6px 18px;font-size:18px;font-weight:700;color:#fff;background:#9b5de5;cursor:pointer}
+button:focus-visible,input:focus-visible+span{outline:3px solid var(--ink);outline-offset:2px}
+.timer{position:relative;width:min(260px,70vw);margin:0 auto}
+.timer svg{width:100%;display:block;transform:rotate(-90deg)}
+.timer circle{fill:none;stroke-width:14}
+#rg{stroke-dasharray:565.5;stroke-linecap:round;transition:stroke .3s}
+#tm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:800 clamp(48px,14vw,68px) 'Baloo 2'}
+.ctl{display:flex;gap:10px;justify-content:center;margin-top:10px}
+#go{background:#1fb87a}#rs{background:#ff8a3d}
+#msg{text-align:center;font-weight:700;margin:6px 0 0;min-height:1.5em}
+.q{display:block;font-size:21px;margin:2px 0 6px}
+.cue li{font-size:18px;margin:3px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:700px){.grid{grid-template-columns:1fr}}
+.ck label{display:block;font-size:18px;padding:4px 0;cursor:pointer}
+.ck input{width:20px;height:20px;accent-color:#1fb87a;margin-right:8px;vertical-align:middle}
+.bar{height:12px;border-radius:99px;background:var(--soft);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;width:0;background:#3ddc97;transition:width .3s}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips label{cursor:pointer}
+.chips input{position:absolute;opacity:0}
+.chips span{display:inline-block;border:2px solid #e0b800;background:var(--card);border-radius:99px;padding:1px 12px;font-size:15px;font-weight:700}
+.chips input:checked+span{background:#ffe66d;color:#1f2340}
+.cnt{font:700 18px 'Baloo 2';color:#2b7de9}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+#rec{background:#ff3d3d}#rstop{background:#6b7280}#ragain{background:#2bb3ff}#rsave{text-decoration:none}#rsave button{background:#9b5de5}
+.rbtn{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:8px 0}
+.rbtn button[hidden]{display:none}
+#rstat{text-align:center;font-weight:700;margin:4px 0;min-height:1.5em}
+#rstat.live::before{content:"";display:inline-block;width:12px;height:12px;border-radius:50%;background:#ff3d3d;margin-right:8px;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.25}}
+#play{display:block;width:100%;max-width:420px;margin:6px auto 0}
+.rtip{margin:6px 0 0;font-size:15px;text-align:center}
+@media (prefers-reduced-motion:reduce){#rstat.live::before{animation:none}}
+@keyframes hdrflow{0%{background-position:0 50%}50%{background-position:100% 50%}100%{background-position:0 50%}}
+@keyframes hdrfloat{50%{transform:translateY(-5px) rotate(8deg)}}
+@keyframes hdrbeat{50%{transform:scale(1.25)}}
+.hdr{flex:none;position:relative;overflow:hidden;text-align:center;color:#fff;padding:9px 44px 10px;border-radius:0 0 26px 26px;background:linear-gradient(110deg,#1d3557,#6a4df0,#ff5d8f,#6a4df0,#1d3557);background-size:300% 100%;animation:hdrflow 14s ease infinite;box-shadow:0 5px 0 rgba(31,35,64,.25);font-family:'Baloo 2','Nunito',system-ui,sans-serif;line-height:1.35}
+.hdr .h1{font-size:clamp(16px,3.6vw,23px);font-weight:800;text-shadow:0 2px 0 rgba(0,0,0,.22)}
+.hdr .h2{font-size:clamp(12px,2.5vw,16px);font-weight:700;margin-top:1px}
+.hdr .pct{display:inline-block;background:#ffe66d;color:#1f2340;border-radius:99px;padding:0 9px;margin:0 2px;transform:rotate(-3deg)}
+.hdr .win{color:#ffe66d;font-weight:800}
+.hdr .h3{display:flex;flex-wrap:wrap;gap:6px 8px;justify-content:center;align-items:center;margin-top:6px}
+.hdr .tag{background:#fff;color:#e0245e;border-radius:99px;padding:0 14px;font-size:clamp(12px,2.5vw,16px);font-weight:800;box-shadow:0 3px 0 rgba(0,0,0,.2);transition:opacity .3s}
+.hdr .sig{background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.55);border-radius:99px;padding:0 12px;font-size:clamp(11px,2.2vw,14px);font-weight:700}
+.hdr .hb{display:inline-block;font-style:normal;animation:hdrbeat 1.4s ease-in-out infinite}
+.hdr .dec{position:absolute;font-size:clamp(18px,3.5vw,26px);animation:hdrfloat 3.2s ease-in-out infinite;pointer-events:none}
+.hdr .d1{left:10px;top:8px}.hdr .d2{left:10px;bottom:6px;animation-delay:.8s}.hdr .d3{right:10px;top:8px;animation-delay:.4s}.hdr .d4{right:10px;bottom:6px;animation-delay:1.2s}
+@media (max-width:480px){.hdr{padding:8px 30px 9px}.hdr .d2,.hdr .d4{display:none}}
+@media (prefers-reduced-motion:reduce){.hdr,.hdr .dec,.hdr .hb{animation:none}}
+@media (min-width:701px){.grid .wide{grid-column:1/-1}}
+.gh{font:800 17px 'Baloo 2';color:var(--g);margin:10px 0 4px}
+.chips{gap:10px}
+.chips span{font-size:17px;padding:5px 15px;white-space:nowrap;border-color:var(--g,#e0b800);border-width:2.5px}
+.chips input:checked+span{box-shadow:0 3px 0 var(--g,#e0b800)}
+.chips input:checked+span::before{content:"✓ "}
+</style></head>
+<body><header class="hdr"><span class="dec d1" aria-hidden="true">⭐</span><span class="dec d2" aria-hidden="true">🚀</span><span class="dec d3" aria-hidden="true">🎤</span><span class="dec d4" aria-hidden="true">🏆</span><div class="h1">Cô chúc các em luyện tập thật vui và hiệu quả</div><div class="h2">Hãy quyết tâm và cố gắng với <b class="pct">100%</b> sự nỗ lực – Rồi các em sẽ <b class="win">thành công!</b></div><div class="h3"><span class="tag" id="tag">💪 Every word you speak makes you stronger!</span><span class="sig">Thương mến - Tracey Le <i class="hb">💖</i></span></div></header><div class="w">
+<div class="head"><svg viewBox="0 0 120 120" aria-hidden="true"><rect x="44" y="10" width="32" height="56" rx="16" fill="#3ddc97" stroke="#1f2340" stroke-width="4"/><circle cx="52" cy="34" r="3.5" fill="#1f2340"/><circle cx="68" cy="34" r="3.5" fill="#1f2340"/><path d="M54 42q6 7 12 0" stroke="#1f2340" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="46" cy="40" r="3.5" fill="#ff9ec0"/><circle cx="74" cy="40" r="3.5" fill="#ff9ec0"/><path d="M30 52c0 28 14 38 30 38s30-10 30-38M60 90v16M42 106h36" fill="none" stroke="#1f2340" stroke-width="4" stroke-linecap="round"/><path d="M100 15l3 6 6 3-6 3-3 6-3-6-6-3 6-3z" fill="#ffb703"/><path d="M16 30l3 6 6 3-6 3-3 6-3-6-6-3 6-3z" fill="#ff5d8f"/></svg><h1>🎤 Speak for 2 minutes!</h1></div>
+
+<div class="card" style="--c:#9b5de5"><div class="roles">
+<div><span class="pill sp" id="r1">🗣️ Speaker: A</span> <span class="pill li" id="r2">👂 Listener: B</span></div>
+<button id="sw">🔄 Swap roles</button></div></div>
+
+<div class="card"><div class="timer"><svg viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="90" stroke="#cfd8e3" opacity=".5"/><circle id="rg" cx="100" cy="100" r="90" stroke="#3ddc97"/></svg><div id="tm" role="timer">2:00</div></div>
+<div class="ctl"><button id="go">▶️ Start</button><button id="rs">↺ Reset</button></div><p id="msg">Speaker: ready? Take a breath and start! 🌟</p></div>
+
+<div class="card" style="--c:#ff5d8f"><h2>🎯 Cue card</h2><b class="q">Describe an electronic device you use often</b><ul class="cue"><li>⏳ How long you have had it</li><li>📅 How often you have used it</li><li>🛠️ What you have used it for</li><li>💡 Why you use it so often</li></ul></div>
+
+<div class="card" style="--c:#ff8a3d"><h2>🎙️ Solo practice: record yourself, then be your own listener!</h2>
+<div class="rbtn"><button id="rec">🔴 Record</button><button id="rstop" hidden>⏹ Stop</button><button id="ragain" hidden>🔁 Record again</button><a id="rsave" hidden download="my-speaking-practice"><button type="button">💾 Save</button></a></div>
+<p id="rstat" role="status" aria-live="polite">Tap Record, then start the timer and speak for 2 minutes! 🎤</p>
+<audio id="play" controls hidden></audio>
+<p class="rtip">👂 Press play, listen to yourself, then use the Listener box below: tap the collocations you hear and give yourself one compliment! ⭐</p></div>
+
+<div class="grid">
+<div class="card ck" style="--c:#ff5d8f"><h2>🗣️ Speaker: tick each part</h2>
+<label><input type="checkbox"> 👋 Introduction</label><label><input type="checkbox"> ⏳ How long + how often</label><label><input type="checkbox"> 🔋 Quick info</label><label><input type="checkbox"> ✨ Appearance</label><label><input type="checkbox"> 🛠️ Functions (A, B, C)</label><label><input type="checkbox"> 💖 Why</label><label><input type="checkbox"> 🎬 Closing</label>
+<div class="bar"><i id="b1"></i></div></div>
+<div class="card wide" style="--c:#2bb3ff"><h2>👂 Listener: tap the collocations you hear</h2>
+<div id="chips"></div><p class="cnt"><span id="n">0</span> / 20 heard 🌟</p>
+<p style="margin:4px 0 0;font-size:15px">⭐ Give one compliment: “I loved your ______!”</p></div></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const COL=['As far as I remember','almost every single day','for quite a while now','The good news is that','The only downside is that','it’s only a matter of time','Talking about','the latest model','What really blew me away was','on the move','second-hand purchase','user-friendly interface','navigate through','To be honest','First and foremost','On top of that','comes in handy','Ultimately','I can confidently say that','hands down'];
+const GR=[['⏳ Start: how long & how often','#ff8a3d',[0,1,2]],['🔋 Quick info','#1fb87a',[3,4,5]],['✨ Appearance','#9b5de5',[6,7,8,9,10,11,12]],['🛠️ Functions','#2bb3ff',[13,14,15,16]],['💖 Why + Closing','#ff5d8f',[17,18,19]]];
+$('chips').innerHTML=GR.map(([t,c,ix])=>`<div style="--g:${c}"><div class="gh">${t}</div><div class="chips">${ix.map(i=>`<label><input type="checkbox"><span>${COL[i]}</span></label>`).join('')}</div></div>`).join('');
+const D=120;let t=D,iv=null,A=true;
+function beep(){try{const a=new (window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator();o.frequency.value=880;o.connect(a.destination);o.start();setTimeout(()=>o.stop(),500)}catch(e){}}
+function draw(){const s=t%60;$('tm').textContent=t==0?'🎉':Math.floor(t/60)+':'+String(s).padStart(2,'0');
+$('rg').style.strokeDashoffset=565.5*(1-t/D);$('rg').style.stroke=t<=10?'#ff3d3d':t<=30?'#ffb703':'#3ddc97';
+$('msg').textContent=t==0?'⏰ Time’s up! Listener: share your compliment, then swap roles!':t<=30&&iv?'🔥 Last 30 seconds – finish strong with your closing sentence!':iv?'🎙️ Keep going – you’re doing great!':$('msg').textContent}
+function stop(){clearInterval(iv);iv=null;$('go').textContent='▶️ Start'}
+$('go').onclick=()=>{if(iv){stop();$('msg').textContent='⏸️ Paused';return}
+if(t==0)t=D;$('go').textContent='⏸️ Pause';iv=setInterval(()=>{t--;if(t<=0){t=0;stop();beep()}draw()},1000);draw()};
+function reset(){stop();t=D;$('msg').textContent='Speaker: ready? Take a breath and start! 🌟';draw();$('rg').style.strokeDashoffset=0}
+$('rs').onclick=reset;
+function tick(){const c=[...document.querySelectorAll('.ck:first-child input')];$('b1').style.width=100*c.filter(x=>x.checked).length/c.length+'%';$('n').textContent=document.querySelectorAll('#chips input:checked').length}
+document.addEventListener('change',tick);
+$('sw').onclick=()=>{A=!A;$('r1').textContent='🗣️ Speaker: '+(A?'A':'B');$('r2').textContent='👂 Listener: '+(A?'B':'A');
+document.querySelectorAll('input[type=checkbox]').forEach(x=>x.checked=false);tick();reset()};
+draw();$('rg').style.strokeDashoffset=0;
+
+(()=>{let mr=null,ch=[],st=null,url=null,sec=0,ti=null;const el=id=>document.getElementById(id);
+const fmt=n=>Math.floor(n/60)+':'+String(n%60).padStart(2,'0');
+const say=(m,live)=>{el('rstat').textContent=m;el('rstat').classList.toggle('live',!!live)};
+const stopTracks=()=>{if(st){st.getTracks().forEach(x=>x.stop());st=null}};
+el('rec').onclick=async()=>{
+if(!navigator.mediaDevices||!window.MediaRecorder){say('😔 Recording is not supported in this browser. Try Chrome, Edge or Safari.');return}
+try{st=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){say('🔒 Please allow microphone access in your browser, then tap Record again.');return}
+if(url){URL.revokeObjectURL(url);url=null}
+ch=[];mr=new MediaRecorder(st);mr.ondataavailable=e=>{if(e.data.size)ch.push(e.data)};
+mr.onstop=()=>{clearInterval(ti);stopTracks();const type=mr.mimeType||'audio/webm';const b=new Blob(ch,{type});url=URL.createObjectURL(b);
+const p=el('play');p.src=url;p.hidden=false;const a=el('rsave');a.href=url;a.download='my-speaking-practice.'+(type.includes('mp4')?'m4a':type.includes('ogg')?'ogg':'webm');a.hidden=false;
+el('rec').hidden=true;el('rstop').hidden=true;el('ragain').hidden=false;say('✅ Recorded '+fmt(sec)+'! Press play to listen to yourself 🎧',false)};
+mr.start();sec=0;el('rec').hidden=true;el('rstop').hidden=false;el('ragain').hidden=true;el('play').hidden=true;el('rsave').hidden=true;
+say('Recording… 0:00 – speak now!',true);ti=setInterval(()=>{sec++;say('Recording… '+fmt(sec)+' – keep going!',true)},1000)};
+el('rstop').onclick=()=>{if(mr&&mr.state!=='inactive')mr.stop()};
+el('ragain').onclick=()=>{el('play').pause();el('ragain').hidden=true;el('rec').hidden=false;el('rec').click()};
+})();
+</script><script>(()=>{const T=['💪 Every word you speak makes you stronger!','🌟 Mistakes are proof that you’re learning!','🚀 Small steps every day = big results!','🎤 Speak with confidence – you’ve got this!','🏆 Practice today, shine in the exam!'],e=document.getElementById('tag');if(!e||matchMedia('(prefers-reduced-motion:reduce)').matches)return;let i=0;setInterval(()=>{e.style.opacity=0;setTimeout(()=>{i=(i+1)%T.length;e.textContent=T[i];e.style.opacity=1},300)},4500)})();</script></body></html>

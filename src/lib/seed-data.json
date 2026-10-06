@@ -1,0 +1,123 @@
+{
+  "slug": "describe-an-electronic-device-you-use-often",
+  "title": "Describe an electronic device you use often",
+  "cue_card": {
+    "prompt": "Describe an electronic device you use often",
+    "bullet_points": [
+      "⏳ How long you have had it",
+      "📅 How often you have used it",
+      "🛠️ What you have used it for",
+      "💡 Why you use it so often"
+    ]
+  },
+  "steps": [
+    {
+      "step": 1,
+      "title": "👋 Introduction",
+      "coach_tip": "Start with a big smile – confidence begins here! 😄",
+      "templates": [
+        "When it comes to [[an electronic device I use often]], my [[smartphone|laptop]] is the first one that comes to my mind."
+      ]
+    },
+    {
+      "step": 2,
+      "title": "⏳ How long have you had it?",
+      "coach_tip": "Share your story – it's yours, so it's easy! 🎁",
+      "options": [
+        {
+          "label": "🎁 Option 1: A present",
+          "text": "{{As far as I remember}}, it was a present from my [[parents|sister|uncle|best friend]] to congratulate me on [[my birthday|passing an exam|my graduation]]."
+        },
+        {
+          "label": "🛍️ Option 2: I bought it",
+          "text": "{{As far as I remember}}, I bought it in a [[mobile|laptop]] shop [[last year|a few years ago|when I was in high school]]."
+        }
+      ],
+      "follow_up": "And it has been with me {{for quite a while now}}. In fact, I use it [[{{almost every single day}}|on a regular basis]]."
+    },
+    {
+      "step": 3,
+      "title": "🔋 Quick info",
+      "coach_tip": "Honest and simple wins every time 👍",
+      "options": [
+        {
+          "label": "👍 Option 1: All good",
+          "text": "{{The good news is that}} it's still working fine, so I really can't complain about its [[quality|durability]]."
+        },
+        {
+          "label": "👎 Option 2: A downside",
+          "text": "{{The only downside is that}} [[the battery life has deteriorated over time|it's running out of storage space|it tends to lag if I run too many programs at the same time]]. So, I guess {{it's only a matter of time}} before I upgrade to a newer model."
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "title": "✨ Describe your device",
+      "coach_tip": "Paint a picture with your words! 🎨",
+      "options": [
+        {
+          "label": "🆕 Option 1: Latest model",
+          "text": "{{Talking about}} its appearance, it was {{the latest model}} on the market at that time. {{What really blew me away was}} its [[eye-catching design|sleek look|cutting-edge technology]]. What's more, because it's pretty [[lightweight]], I can easily fit it into my bag when I'm {{on the move}}."
+        },
+        {
+          "label": "📼 Option 2: Second-hand / old",
+          "text": "{{Talking about}} its appearance, it was [[a {{second-hand purchase}}|an old model]]. However, {{what really blew me away was}} its timeless design, which still looks just as good as the newer versions. What's more, because it has a [[{{user-friendly interface}}]], I can {{navigate through}} all my apps and tasks effortlessly."
+        }
+      ]
+    },
+    {
+      "step": 5,
+      "title": "🛠️ What do you use it for?",
+      "coach_tip": "Show off your vocabulary – you've got this! 💪",
+      "templates": [
+        "{{To be honest}}, this device has become an important part of my life.",
+        "{{First and foremost}}, I mainly use it to [[take online classes|complete homework and assignments|keep track of deadlines|look up new words in the dictionary|search for learning materials]].",
+        "{{On top of that}}, it's my go-to device to [[binge-watch my favorite series|scroll through social media|wind down after a stressful day]].",
+        "It also {{comes in handy}} when I want to [[keep in touch with my family and friends|keep up with the latest news]]."
+      ]
+    },
+    {
+      "step": 6,
+      "title": "💖 Why do you use it so often?",
+      "coach_tip": "Speak from the heart – the examiner can feel it! 💖",
+      "templates": [
+        "{{Ultimately}}, the reason why I use it so often is because it's [[extremely convenient|really handy|a huge time-saver]]. {{To be honest}}, it has made my life so much easier and I can't imagine my life without it."
+      ]
+    },
+    {
+      "step": 7,
+      "title": "🎬 Closing sentence",
+      "coach_tip": "Finish strong and leave a great impression! 🏆",
+      "templates": [
+        "All in all, {{I can confidently say that}} this device is {{hands down}} the best investment I've ever made."
+      ]
+    }
+  ],
+  "collocations": [
+    {
+      "category": "⏳ Start: how long & how often",
+      "color": "#ff8a3d",
+      "items": ["As far as I remember", "almost every single day", "for quite a while now"]
+    },
+    {
+      "category": "🔋 Quick info",
+      "color": "#1fb87a",
+      "items": ["The good news is that", "The only downside is that", "it's only a matter of time"]
+    },
+    {
+      "category": "✨ Appearance",
+      "color": "#9b5de5",
+      "items": ["Talking about", "the latest model", "What really blew me away was", "on the move", "second-hand purchase", "user-friendly interface", "navigate through"]
+    },
+    {
+      "category": "🛠️ Functions",
+      "color": "#2bb3ff",
+      "items": ["To be honest", "First and foremost", "On top of that", "comes in handy"]
+    },
+    {
+      "category": "💖 Why + Closing",
+      "color": "#ff5d8f",
+      "items": ["Ultimately", "I can confidently say that", "hands down"]
+    }
+  ]
+}
