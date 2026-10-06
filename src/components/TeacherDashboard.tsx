@@ -30,7 +30,6 @@ import {
   Download,
   RefreshCw,
   Loader2,
-  AlertTriangle,
 } from "lucide-react";
 
 function generateCopySlug(slug: string) {
@@ -142,9 +141,32 @@ export function TeacherDashboard({
   };
 
   useEffect(() => {
-    fetchTopics();
-    fetchStudents();
-    fetchLogs();
+    let active = true;
+    const loadInitialData = async () => {
+      try {
+        const [tRes, sRes, lRes] = await Promise.all([
+          fetch("/api/topics"),
+          fetch("/api/students"),
+          fetch("/api/practice"),
+        ]);
+        if (!active) return;
+        const [tData, sData, lData] = await Promise.all([
+          tRes.json(),
+          sRes.json(),
+          lRes.json(),
+        ]);
+        if (!active) return;
+        if (tData.topics) setTopics(tData.topics);
+        if (sData.students) setStudents(sData.students);
+        if (lData.sessions) setPracticeLogs(lData.sessions);
+      } catch {
+        // ignore
+      }
+    };
+    loadInitialData();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleLogout = async () => {

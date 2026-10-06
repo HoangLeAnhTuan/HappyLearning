@@ -10,10 +10,8 @@ import {
   RotateCcw,
   Play,
   Pause,
-  Volume2,
   CheckCircle2,
   Trash2,
-  Sparkles,
   Award,
   Radio,
   Headphones,
@@ -24,7 +22,6 @@ import {
   FileAudio,
   FastForward,
   Rewind,
-  Clock,
   Loader2,
 } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";

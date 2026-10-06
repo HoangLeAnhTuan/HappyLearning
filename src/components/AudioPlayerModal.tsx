@@ -15,8 +15,6 @@ import {
   Clock,
   User,
   GraduationCap,
-  Sparkles,
-  Layers,
 } from "lucide-react";
 
 interface AudioPlayerModalProps {
@@ -36,13 +34,30 @@ export function AudioPlayerModal({ log, onClose }: AudioPlayerModalProps) {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(120);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
 
-  // Close on Escape key
+  const togglePlay = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (audio.paused) {
+      audio
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch((err) => {
+          setAudioError("Không thể phát audio: " + (err?.message || "Lỗi thiết bị"));
+        });
+    } else {
+      audio.pause();
+      setIsPlaying(false);
+    }
+  }, []);
+
+  // Close on Escape key or Space to play/pause
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -55,25 +70,25 @@ export function AudioPlayerModal({ log, onClose }: AudioPlayerModalProps) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, togglePlay]);
 
   // Decode audio duration reliably if webm metadata is missing
   useEffect(() => {
-    if (!log?.audio_url) return;
-
-    setCurrentTime(0);
-    setIsPlaying(false);
-    setAudioError(null);
+    const audioUrl = log?.audio_url;
+    if (!audioUrl) return;
 
     let cancelled = false;
 
     const fetchDuration = async () => {
       try {
-        const res = await fetch(log.audio_url!);
+        const res = await fetch(audioUrl);
         const arrayBuf = await res.arrayBuffer();
         if (cancelled) return;
 
-        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const AudioCtx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext })
+            .webkitAudioContext;
         if (AudioCtx) {
           const ctx = new AudioCtx();
           const decoded = await ctx.decodeAudioData(arrayBuf);
@@ -94,24 +109,10 @@ export function AudioPlayerModal({ log, onClose }: AudioPlayerModalProps) {
     };
   }, [log?.audio_url]);
 
-  const togglePlay = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (audio.paused) {
-      audio.play().then(() => setIsPlaying(true)).catch((err) => {
-        setAudioError("Không thể phát audio: " + (err?.message || "Lỗi thiết bị"));
-      });
-    } else {
-      audio.pause();
-      setIsPlaying(false);
-    }
-  };
-
   const handleSeek = (time: number) => {
     const audio = audioRef.current;
     if (!audio) return;
-    const clamped = Math.max(0, Math.min(duration || audio.duration || 120, time));
+    const clamped = Math.max(0, Math.min(duration, time));
     audio.currentTime = clamped;
     setCurrentTime(clamped);
   };
@@ -159,8 +160,7 @@ export function AudioPlayerModal({ log, onClose }: AudioPlayerModalProps) {
 
   if (!log || !log.audio_url) return null;
 
-  const currentDuration = duration || (audioRef.current?.duration || 0);
-  const progressPercent = currentDuration > 0 ? (currentTime / currentDuration) * 100 : 0;
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -179,7 +179,7 @@ export function AudioPlayerModal({ log, onClose }: AudioPlayerModalProps) {
             }
           }}
           onLoadedMetadata={() => {
-            if (audioRef.current && audioRef.current.duration > 0 && !duration) {
+            if (audioRef.current && audioRef.current.duration > 0) {
               setDuration(audioRef.current.duration);
             }
           }}
@@ -246,7 +246,9 @@ export function AudioPlayerModal({ log, onClose }: AudioPlayerModalProps) {
                         : "bg-white/30"
                     }`}
                     style={{
-                      height: isPlaying ? `${Math.max(15, (h * (progressPercent / 100 + 0.3)) % 100)}%` : `${h * 0.4}%`,
+                      height: isPlaying
+                        ? `${Math.max(15, (h * (progressPercent / 100 + 0.3)) % 100)}%`
+                        : `${h * 0.4}%`,
                       animationDelay: `${idx * 75}ms`,
                     }}
                   />
@@ -263,7 +265,7 @@ export function AudioPlayerModal({ log, onClose }: AudioPlayerModalProps) {
                 <span>{new Date(log.created_at).toLocaleString()}</span>
               </div>
               <span className="text-indigo-200">
-                {formatTime(currentDuration || 120)}
+                {formatTime(duration)}
               </span>
             </div>
           </div>
@@ -280,7 +282,7 @@ export function AudioPlayerModal({ log, onClose }: AudioPlayerModalProps) {
               <input
                 type="range"
                 min={0}
-                max={currentDuration || 120}
+                max={duration}
                 step={0.1}
                 value={currentTime}
                 onChange={(e) => handleSeek(parseFloat(e.target.value))}
