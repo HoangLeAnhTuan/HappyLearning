@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import type { Student } from "@/lib/types";
 import {
   KeyRound,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 
 export function StudentAccessBar() {
+  const router = useRouter();
   const [student, setStudent] = useState<Student | null>(null);
   const [accessCode, setAccessCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -50,6 +52,7 @@ export function StudentAccessBar() {
 
       setStudent(data.student);
       setAccessCode("");
+      router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Xác thực thất bại";
       setError(msg);
@@ -65,6 +68,7 @@ export function StudentAccessBar() {
       // ignore
     }
     setStudent(null);
+    router.refresh();
   };
 
   if (student) {

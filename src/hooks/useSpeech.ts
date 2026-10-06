@@ -82,16 +82,15 @@ const PROFILE_DEFINITIONS: Array<{
     flag: "🇬🇧",
     femaleKeywords: [
       "sonia",
-      "maisie",
       "libby",
+      "maisie",
       "stephanie",
       "serena",
       "fiona",
       "hazel",
+      "susan",
       "google uk english female",
       "female",
-      "gb",
-      "uk",
     ],
     maleKeywords: [],
   },
@@ -108,10 +107,10 @@ const PROFILE_DEFINITIONS: Array<{
       "george",
       "oliver",
       "daniel",
+      "arthur",
+      "thomas",
       "google uk english male",
       "male",
-      "gb",
-      "uk",
     ],
   },
   {
@@ -127,9 +126,12 @@ const PROFILE_DEFINITIONS: Array<{
       "karen",
       "catherine",
       "matilda",
+      "elsie",
+      "freya",
+      "joanne",
+      "tina",
       "google australian english female",
       "female",
-      "au",
     ],
     maleKeywords: [],
   },
@@ -147,62 +149,115 @@ const PROFILE_DEFINITIONS: Array<{
       "lee",
       "gordon",
       "russell",
+      "carlyle",
+      "duncan",
+      "ken",
+      "neil",
+      "tim",
       "google australian english male",
       "male",
-      "au",
     ],
   },
 ];
 
-// Helper to find the best matching voice for a given profile
+// Helper to strictly resolve English voices per dialect and prevent non-English leak
 function resolveVoiceForProfile(
   profile: (typeof PROFILE_DEFINITIONS)[number],
   allVoices: SpeechSynthesisVoice[]
-): SpeechSynthesisVoice | null {
-  const normLang = profile.accent.replace("_", "-").toLowerCase();
-  const regionalVoices = allVoices.filter((v) =>
-    v.lang.replace("_", "-").toLowerCase().startsWith(normLang)
-  );
+): { voice: SpeechSynthesisVoice | null; displayName: string } {
+  // 1. Filter strictly to English voices (NEVER allow non-English voices like Japanese, Chinese, etc.)
+  const englishVoices = allVoices.filter((v) => {
+    const lang = (v.lang || "").toLowerCase().replace("_", "-");
+    return lang.startsWith("en");
+  });
 
-  const pool = regionalVoices.length > 0 ? regionalVoices : allVoices;
+  const normTarget = profile.accent.toLowerCase(); // "en-us", "en-gb", "en-au"
+
+  // 2. Filter English voices belonging strictly to this regional dialect
+  const regionalVoices = englishVoices.filter((v) => {
+    const lang = (v.lang || "").toLowerCase().replace("_", "-");
+    const name = (v.name || "").toLowerCase();
+
+    if (profile.accent === "en-GB") {
+      return (
+        lang.startsWith("en-gb") ||
+        lang.startsWith("en-uk") ||
+        name.includes("united kingdom") ||
+        name.includes("uk english") ||
+        name.includes("great britain") ||
+        name.includes("british")
+      );
+    }
+
+    if (profile.accent === "en-AU") {
+      return (
+        lang.startsWith("en-au") ||
+        name.includes("australia") ||
+        name.includes("australian")
+      );
+    }
+
+    if (profile.accent === "en-US") {
+      return (
+        lang.startsWith("en-us") ||
+        name.includes("united states") ||
+        name.includes("us english") ||
+        name.includes("american")
+      );
+    }
+
+    return lang.startsWith(normTarget);
+  });
+
   const keywords = profile.gender === "female" ? profile.femaleKeywords : profile.maleKeywords;
 
-  // 1. Look for Natural/Online/Neural/Enhanced voice matching keywords
-  for (const kw of keywords) {
-    const found = pool.find((v) => {
+  // 3. Search within regional voices
+  if (regionalVoices.length > 0) {
+    // 3a. Look for Natural/Online voice with gender keyword
+    for (const kw of keywords) {
+      const found = regionalVoices.find((v) => {
+        const n = v.name.toLowerCase();
+        const isNatural =
+          n.includes("natural") ||
+          n.includes("online") ||
+          n.includes("neural") ||
+          n.includes("enhanced") ||
+          n.includes("google");
+        return isNatural && n.includes(kw);
+      });
+      if (found) return { voice: found, displayName: found.name };
+    }
+
+    // 3b. Look for any voice in region with gender keyword
+    for (const kw of keywords) {
+      const found = regionalVoices.find((v) => v.name.toLowerCase().includes(kw));
+      if (found) return { voice: found, displayName: found.name };
+    }
+
+    // 3c. Look for any Natural voice in region
+    const naturalInRegion = regionalVoices.find((v) => {
       const n = v.name.toLowerCase();
-      const isNatural =
+      return (
         n.includes("natural") ||
         n.includes("online") ||
         n.includes("neural") ||
         n.includes("enhanced") ||
-        n.includes("google");
-      return isNatural && n.includes(kw);
+        n.includes("google")
+      );
     });
-    if (found) return found;
+    if (naturalInRegion) return { voice: naturalInRegion, displayName: naturalInRegion.name };
+
+    // 3d. Fallback to first voice in region
+    return { voice: regionalVoices[0], displayName: regionalVoices[0].name };
   }
 
-  // 2. Look for regular voice matching keywords
-  for (const kw of keywords) {
-    const found = pool.find((v) => v.name.toLowerCase().includes(kw));
-    if (found) return found;
-  }
-
-  // 3. Look for any Natural voice in the region
-  const naturalInRegion = pool.find((v) => {
-    const n = v.name.toLowerCase();
-    return (
-      n.includes("natural") ||
-      n.includes("online") ||
-      n.includes("neural") ||
-      n.includes("enhanced") ||
-      n.includes("google")
-    );
-  });
-  if (naturalInRegion) return naturalInRegion;
-
-  // 4. Fallback to first voice in region or default
-  return pool[0] || null;
+  // 4. If no installed voice for this dialect is found:
+  // Return null voice so the browser engine synthesizes `utterance.lang = profile.accent` natively
+  // without overriding it with a mismatched US or other local voice.
+  return {
+    voice: null,
+    displayName: `${profile.label} (${profile.accent})`,
+  };
 }
 
 export function useSpeech() {
@@ -226,7 +281,7 @@ export function useSpeech() {
       voicesRef.current = allVoices;
 
       const resolvedProfiles: VoiceProfile[] = PROFILE_DEFINITIONS.map((def) => {
-        const voice = resolveVoiceForProfile(def, allVoices);
+        const { displayName } = resolveVoiceForProfile(def, allVoices);
         return {
           id: def.id,
           label: def.label,
@@ -234,7 +289,7 @@ export function useSpeech() {
           gender: def.gender,
           region: def.region,
           flag: def.flag,
-          systemVoiceName: voice?.name || def.label,
+          systemVoiceName: displayName,
         };
       });
 
@@ -250,7 +305,15 @@ export function useSpeech() {
     populateVoices();
     window.speechSynthesis.onvoiceschanged = populateVoices;
 
+    // Retry pollers to handle browser async voice loading
+    const timer1 = setTimeout(populateVoices, 250);
+    const timer2 = setTimeout(populateVoices, 1000);
+    const timer3 = setTimeout(populateVoices, 2500);
+
     return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
       if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
@@ -293,16 +356,11 @@ export function useSpeech() {
 
   // Get current active SpeechSynthesisVoice object
   const getActiveVoice = useCallback(() => {
-    const currentProfile = voiceProfiles.find((p) => p.id === selectedProfileId);
-    if (!currentProfile) return null;
-    return (
-      voicesRef.current.find((v) => v.name === currentProfile.systemVoiceName) ||
-      voicesRef.current.find((v) =>
-        v.lang.replace("_", "-").toLowerCase().startsWith(currentProfile.accent.toLowerCase())
-      ) ||
-      null
-    );
-  }, [voiceProfiles, selectedProfileId]);
+    const currentDef = PROFILE_DEFINITIONS.find((p) => p.id === selectedProfileId);
+    if (!currentDef) return null;
+    const { voice } = resolveVoiceForProfile(currentDef, voicesRef.current);
+    return voice;
+  }, [selectedProfileId]);
 
   // Sequential speaker to prevent browser drop bugs
   const speak = useCallback(
@@ -318,8 +376,9 @@ export function useSpeech() {
       setPlaying(true);
 
       const activeVoice = getActiveVoice();
-      const currentProfile = voiceProfiles.find((p) => p.id === selectedProfileId);
-      const targetLang = currentProfile?.accent || "en-US";
+      const currentDef = PROFILE_DEFINITIONS.find((p) => p.id === selectedProfileId);
+      const targetLang = currentDef?.accent || "en-US";
+      const isFemale = currentDef?.gender === "female";
 
       let currentIndex = 0;
 
@@ -342,7 +401,9 @@ export function useSpeech() {
         const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.rate = speed;
         utterance.lang = targetLang;
-        if (activeVoice) {
+        utterance.pitch = isFemale ? 1.05 : 0.95;
+
+        if (activeVoice && activeVoice.lang.toLowerCase().startsWith("en")) {
           utterance.voice = activeVoice;
         }
 
@@ -375,7 +436,7 @@ export function useSpeech() {
 
       speakNext();
     },
-    [speed, selectedProfileId, voiceProfiles, getActiveVoice, clearHighlight]
+    [speed, selectedProfileId, getActiveVoice, clearHighlight]
   );
 
   // Test voice sample with male / female greeting
@@ -385,29 +446,28 @@ export function useSpeech() {
       window.speechSynthesis.cancel();
 
       const targetId = profileId || selectedProfileId;
-      const profile = voiceProfiles.find((p) => p.id === targetId) || PROFILE_DEFINITIONS.find((p) => p.id === targetId);
-      if (!profile) return;
+      const currentDef = PROFILE_DEFINITIONS.find((p) => p.id === targetId);
+      if (!currentDef) return;
 
-      const voice =
-        voicesRef.current.find((v) => v.name === ("systemVoiceName" in profile ? profile.systemVoiceName : "")) ||
-        voicesRef.current.find((v) =>
-          v.lang.replace("_", "-").toLowerCase().startsWith(profile.accent.toLowerCase())
-        );
+      const { voice } = resolveVoiceForProfile(currentDef, voicesRef.current);
 
       const sampleText =
-        profile.gender === "female"
-          ? "Hello! I am your speaking partner. Let's practice speaking together!"
-          : "Hello there! I'm ready to practice speaking with you today.";
+        currentDef.gender === "female"
+          ? `Hello! I am your ${currentDef.label} speaking coach. Let's practice speaking IELTS together!`
+          : `Hello there! I am your ${currentDef.label} partner. Ready to speak English today?`;
 
       const utterance = new SpeechSynthesisUtterance(sampleText);
       utterance.rate = speed;
-      utterance.lang = profile.accent;
-      if (voice) {
+      utterance.lang = currentDef.accent;
+      utterance.pitch = currentDef.gender === "female" ? 1.05 : 0.95;
+
+      if (voice && voice.lang.toLowerCase().startsWith("en")) {
         utterance.voice = voice;
       }
+
       window.speechSynthesis.speak(utterance);
     },
-    [selectedProfileId, voiceProfiles, speed]
+    [selectedProfileId, speed]
   );
 
   const currentProfile = voiceProfiles.find((p) => p.id === selectedProfileId);

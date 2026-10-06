@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { verifyStudentOrTeacherSession } from "@/lib/auth-guard";
 import type { Topic } from "@/lib/types";
 import seedData from "@/lib/seed-data.json";
 import {
@@ -9,6 +10,8 @@ import {
   Sparkles,
   Layers,
   GraduationCap,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import Link from "next/link";
 import { StudentAccessBar } from "@/components/StudentAccessBar";
@@ -46,7 +49,10 @@ async function getTopics(): Promise<Topic[]> {
 }
 
 export default async function HomePage() {
-  const topics = await getTopics();
+  const [topics, auth] = await Promise.all([
+    getTopics(),
+    verifyStudentOrTeacherSession(),
+  ]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 font-body">
@@ -96,19 +102,34 @@ export default async function HomePage() {
                 </h2>
               </div>
               <p className="text-sm sm:text-base text-slate-600 mt-1">
-                Chọn chủ đề bên dưới để xem dàn ý mẫu 7 bước, luyện phát âm và bấm giờ nói 2 phút
+                {auth.isAuthenticated
+                  ? "Chọn chủ đề bên dưới để xem dàn ý mẫu 7 bước, luyện phát âm và bấm giờ nói 2 phút"
+                  : "Nhập mã học viên phía trên hoặc bấm vào chủ đề để mở khóa luyện tập"}
               </p>
             </div>
 
             <div className="inline-flex items-center gap-2 text-sm font-bold bg-white text-slate-700 border border-slate-200 px-4 py-1.5 rounded-full shadow-2xs">
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>{topics.length} Chủ đề</span>
+              {auth.isAuthenticated ? (
+                <>
+                  <Unlock className="w-4 h-4 text-emerald-600" />
+                  <span className="text-emerald-700">Đã mở khóa ({topics.length} Chủ đề)</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4 text-amber-600" />
+                  <span>{topics.length} Chủ đề (Yêu cầu mã)</span>
+                </>
+              )}
             </div>
           </div>
 
           <div className="grid gap-6 sm:grid-cols-2">
             {topics.map((topic) => (
-              <TopicCard key={topic.id || topic.slug} topic={topic} />
+              <TopicCard
+                key={topic.id || topic.slug}
+                topic={topic}
+                isUnlocked={auth.isAuthenticated}
+              />
             ))}
           </div>
 
@@ -140,11 +161,25 @@ export default async function HomePage() {
   );
 }
 
-function TopicCard({ topic }: { topic: Topic }) {
+function TopicCard({
+  topic,
+  isUnlocked,
+}: {
+  topic: Topic;
+  isUnlocked: boolean;
+}) {
   const collocationCount = (topic.collocations || []).reduce(
     (sum, cat) => sum + (cat.items?.length || 0),
     0
   );
+
+  const outlineHref = isUnlocked
+    ? `/topic/${topic.slug}/outline`
+    : `/student/login?redirect=${encodeURIComponent(`/topic/${topic.slug}/outline`)}`;
+
+  const showtimeHref = isUnlocked
+    ? `/topic/${topic.slug}/showtime`
+    : `/student/login?redirect=${encodeURIComponent(`/topic/${topic.slug}/showtime`)}`;
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:shadow-md hover:border-slate-300 transition-all flex flex-col gap-4">
@@ -156,6 +191,11 @@ function TopicCard({ topic }: { topic: Topic }) {
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200">
             <Sparkles className="w-3.5 h-3.5 text-amber-600" /> {collocationCount} Collocations
           </span>
+          {!isUnlocked && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200 ml-auto">
+              <Lock className="w-3 h-3 text-slate-500" /> Cần Mã
+            </span>
+          )}
         </div>
 
         <h3 className="text-lg sm:text-xl font-bold font-heading text-slate-900 leading-snug m-0">
@@ -175,16 +215,36 @@ function TopicCard({ topic }: { topic: Topic }) {
 
       <div className="flex items-center gap-3 mt-auto pt-4 border-t border-slate-100">
         <Link
-          href={`/topic/${topic.slug}/outline`}
+          href={outlineHref}
           className="flex-1 inline-flex items-center justify-center gap-2 bg-slate-50 hover:bg-slate-100 text-slate-800 text-sm font-bold py-3 rounded-2xl border border-slate-200 transition-all cursor-pointer active:scale-95"
         >
-          <BookOpen className="w-4 h-4 text-indigo-700" /> Xem Dàn Ý
+          {isUnlocked ? (
+            <>
+              <BookOpen className="w-4 h-4 text-indigo-700" /> Xem Dàn Ý
+            </>
+          ) : (
+            <>
+              <Lock className="w-4 h-4 text-slate-500" /> Mở Dàn Ý
+            </>
+          )}
         </Link>
         <Link
-          href={`/topic/${topic.slug}/showtime`}
-          className="flex-1 inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-3 rounded-2xl transition-all shadow-sm cursor-pointer active:scale-95 font-heading"
+          href={showtimeHref}
+          className={`flex-1 inline-flex items-center justify-center gap-2 text-white text-sm font-bold py-3 rounded-2xl transition-all shadow-sm cursor-pointer active:scale-95 font-heading ${
+            isUnlocked
+              ? "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200"
+              : "bg-slate-800 hover:bg-slate-900"
+          }`}
         >
-          <Mic className="w-4 h-4" /> Show Time <ArrowRight className="w-4 h-4" />
+          {isUnlocked ? (
+            <>
+              <Mic className="w-4 h-4" /> Show Time <ArrowRight className="w-4 h-4" />
+            </>
+          ) : (
+            <>
+              <Lock className="w-4 h-4 text-amber-300" /> Vào Show Time
+            </>
+          )}
         </Link>
       </div>
     </div>

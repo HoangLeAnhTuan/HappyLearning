@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { verifyStudentOrTeacherSession } from "@/lib/auth-guard";
 import type { Topic } from "@/lib/types";
 import seedData from "@/lib/seed-data.json";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ShowTimeClient } from "@/components/ShowTimeClient";
 
 async function getTopic(slug: string): Promise<Topic | null> {
@@ -34,6 +35,13 @@ export default async function ShowTimePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+
+  // Server-side Guard: Block unauthenticated users from entering Showtime
+  const { isAuthenticated } = await verifyStudentOrTeacherSession();
+  if (!isAuthenticated) {
+    redirect(`/student/login?redirect=${encodeURIComponent(`/topic/${slug}/showtime`)}`);
+  }
+
   const topic = await getTopic(slug);
   if (!topic) notFound();
   return <ShowTimeClient topic={topic} />;
